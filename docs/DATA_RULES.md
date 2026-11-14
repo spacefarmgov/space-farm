@@ -79,8 +79,35 @@ Bir illik tarixçədən “iqlim norması” və ya statistik anomaliya çıxar�
 | ID | Mənbə | Yoxlama vaxtı | Sorğu/sübut | Status |
 |---|---|---|---|---|
 | NASA-01 | POWER Daily sənədi & API (`v2.10.3`) | 2026-11-14 | `https://power.larc.nasa.gov/api/temporal/daily/point` (`T2M`, `T2M_MIN`, `T2M_MAX`, `PRECTOTCORR`, `AG`, `UTC`) | VERIFIED |
-| NASA-02 | Demo raw JSON (Gəncə 2024) | 2026-11-14 | `data/raw/552e40e213b9f7b8.json` + `data/processed/552e40e213b9f7b8.manifest.json` (`366/366` gün, SHA-256 `22b70694bb786042a84df2371af88ddca8b0485858b8ce51e20d1cb99474bf44`) | VERIFIED |
-| AGR-01 | Məhsul kataloqu və qaydalar | 2026-11-14 | `data/catalog/crops.json` & `data/catalog/rules.json` (FAO Paper 56 / CROPWAT əsaslı; lokal ekspert rəyi yoxdur) | PROVISIONAL_SOURCE_SUPPORTED |
+| NASA-02 | Gəncə 2024 Pilot Snapshot (`40.68° N, 46.36° E`) | 2026-11-14 | `data/raw/552e40e213b9f7b8.json` + `data/processed/552e40e213b9f7b8.manifest.json` (`366/366` gün, `506.52 mm`, `10.58 °C`, SHA-256 `22b70694bb786042a84df2371af88ddca8b0485858b8ce51e20d1cb99474bf44`) | VERIFIED |
+| NASA-03 | Aran / Bərdə-Yevlax 2024 Snapshot (`40.38° N, 47.12° E`) | 2026-11-14 | `data/raw/a56184dd09acd946.json` + `data/processed/a56184dd09acd946.manifest.json` (`366/366` gün, `457.50 mm`, `15.70 °C`, SHA-256 `512797f922453b9c8df53738d0d40e06ede038bab41707809da5b3338a4cf1f7`) | VERIFIED |
+| NASA-04 | Quba-Xaçmaz 2024 Snapshot (`41.36° N, 48.51° E`) | 2026-11-14 | `data/raw/f850af6ab056dbf6.json` + `data/processed/f850af6ab056dbf6.manifest.json` (`366/366` gün, `516.20 mm`, `15.04 °C`, SHA-256 `a1d90215e046fefd30243a0d1d9a6ead6a3e7beef5ef7e99a6722cf9d0d06dff`) | VERIFIED |
+| NASA-05 | Şəki-Zaqatala 2024 Snapshot (`41.19° N, 47.17° E`) | 2026-11-14 | `data/raw/3f72f4396abc697d.json` + `data/processed/3f72f4396abc697d.manifest.json` (`366/366` gün, `588.52 mm`, `15.65 °C`, SHA-256 `76373e22397a21421e4f1e1c842652ff2c70392ab0b56b3bd2520056f392a9f3`) | VERIFIED |
+| AGR-01 | Məhsul kataloqu və qaydalar (`crops-0.1.0`, `agronomy-rules-0.1.0`) | 2026-11-14 | `data/catalog/crops.json` (`6` bitki) & `data/catalog/rules.json` (`7` qayda; FAO Paper 56 / CROPWAT əsaslı; lokal ekspert rəyi yoxdur) | PROVISIONAL_SOURCE_SUPPORTED |
+
+## NASA Space Apps Challenge 2026 — Rəsmi Məlumat, Metodologiya və Atribusiya Bəyannaməsi (Judge & Submission Reference)
+
+### 1. Rəsmi NASA Atribusiya Mətni (Submission Form üçün hazır)
+- **English (Official NASA Space Apps Submission Form):**
+  > *"Meteorological and agroclimatic daily time-series parameters (`T2M`, `T2M_MIN`, `T2M_MAX`, `PRECTOTCORR`) were obtained from the NASA Langley Research Center (LaRC) Prediction Of Worldwide Energy Resources (POWER) Project (`API v2.10.3`, Agroclimatology `AG` Community, `UTC` time standard), funded through the NASA Earth Science/Applied Science Program and derived from NASA GMAO MERRA-2 reanalysis (`0.5° × 0.625°` spatial resolution) and GEWEX SRB/FLASHFlux datasets."*
+- **Azərbaycanca (Təqdimat və Münsiflər üçün):**
+  > *"Space Farm layihəsində istifadə olunan gündəlik aqroiqlim göstəriciləri (`T2M`, `T2M_MIN`, `T2M_MAX`, `PRECTOTCORR`) NASA Langley Tədqiqat Mərkəzinin (LaRC) POWER (Prediction Of Worldwide Energy Resources) layihəsindən (`API v2.10.3`, `AG` icması, `UTC` zaman standartı) əldə edilmişdir. Məlumatlar NASA GMAO MERRA-2 (`0.5° × 0.625°` məkan qətnaməsi) peyk/reanaliz məhsullarına əsaslanır."*
+
+### 2. İstifadə Olunan NASA POWER Parametrləri və Aqronomik Törəmə Göstəricilər
+| Kod / Feature ID | Rəsmi NASA / Törəmə Adı | Vahid | İstifadə Məqsədi |
+|---|---|---|---|
+| `T2M` → `mean_temperature` | Temperature at 2 Meters (Daily Mean) | `°C` | Mövsümi orta temperatur uyğunluğu (`RULE_TEMP_OPTIMAL_WINDOW`, `soft_penalty`) |
+| `T2M_MIN` → `min_temperature`, `frost_days_count` | Temperature at 2 Meters Minimum | `°C`, `day` | Şaxta həssaslığı və `T2M_MIN < 0°C` günlərinin sayı (`RULE_FROST_SENSITIVITY`, `soft_penalty`) |
+| `T2M_MAX` → `max_temperature`, `heat_stress_days_count` | Temperature at 2 Meters Maximum | `°C`, `day` | İsti stressi və `T2M_MAX > 35°C` günlərinin sayı (`RULE_HEAT_STRESS_DAYS`, `soft_penalty`) |
+| `PRECTOTCORR` → `total_precipitation_mm`, `wet_days_count` | Precipitation Corrected (MERRA-2) | `mm/day` → `mm` | Mövsümi ümumi yağıntı cəmi və `≥ 1.0 mm` yağıntılı günlərin sayı (`RULE_WATER_SUPPLY_MATCH`, `hard_constraint` / `soft_penalty`) |
+
+### 3. Azərbaycan üzrə Doğrulanmış 4 Real NASA POWER Snapshot-ın Müqayisəsi (`2024-01-01` .. `2024-12-31`, `366/366` gün)
+| Region | Koordinat (`lat, lon`) | MERRA-2 Hüceyrə Hündürlüyü | Orta `T2M` | Min `T2M_MIN` | Max `T2M_MAX` | İllik `PRECTOTCORR` | Şaxtalı / Yağışlı Gün | Query Hash |
+|---|---|---|---|---|---|---|---|---|
+| **Gəncə (Pilot sahə)** | `40.68° N, 46.36° E` | `1313.31 m` | `10.58 °C` | `-10.99 °C` | `32.09 °C` | `506.52 mm` | `98` / `108` gün | `552e40e213b9f7b8` |
+| **Aran (Bərdə-Yevlax)** | `40.38° N, 47.12° E` | `407.41 m` | `15.70 °C` | `-6.35 °C` | `38.92 °C` | `457.50 mm` | `34` / `95` gün | `a56184dd09acd946` |
+| **Quba-Xaçmaz** | `41.36° N, 48.51° E` | `149.23 m` | `15.04 °C` | `-3.66 °C` | `39.27 °C` | `516.20 mm` | `34` / `101` gün | `f850af6ab056dbf6` |
+| **Şəki-Zaqatala** | `41.19° N, 47.17° E` | `312.57 m` | `15.65 °C` | `-4.08 °C` | `37.17 °C` | `588.52 mm` | `28` / `111` gün | `3f72f4396abc697d` |
 
 Mənbə təsdiqi və istifadə olunan real nəticələr hər PR-də `docs/status/data.md`-də yazılır.
 

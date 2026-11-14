@@ -326,6 +326,57 @@ class PowerAdapterTests(unittest.TestCase):
             self.assertFalse(bundle.synthetic)
             self.assertTrue(any("verified cached snapshot" in w for w in bundle.warnings))
 
+    def test_c04_all_committed_regional_snapshots_and_catalog_audit(self) -> None:
+        from app.data_adapters.catalog import get_crop_catalog
+
+        settings = Settings(DATA_DIR=str(self.repo_root / "data"))
+        regional_queries = [
+            ("Ganja 2024", 40.68, 46.36, 506.52),
+            ("Aran 2024", 40.38, 47.12, 457.50),
+            ("Quba-Khachmaz 2024", 41.36, 48.51, 516.20),
+            ("Sheki-Zaqatala 2024", 41.19, 47.17, 588.52),
+        ]
+        for label, lat, lon, expected_precip in regional_queries:
+            query = ClimateQuery(
+                latitude=lat,
+                longitude=lon,
+                start_date=date(2024, 1, 1),
+                end_date=date(2024, 12, 31),
+                time_standard="UTC",
+            )
+            qhash = compute_query_hash(query, community="AG")
+            raw_path = settings.raw_data_dir / f"{qhash}.json"
+            manifest_path = settings.processed_data_dir / f"{qhash}.manifest.json"
+            self.assertTrue(raw_path.exists(), f"Missing raw snapshot for {label}: {raw_path}")
+            self.assertTrue(manifest_path.exists(), f"Missing manifest for {label}: {manifest_path}")
+
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            self.assertEqual(
+                manifest["payload_sha256"],
+                hashlib.sha256(raw_path.read_bytes()).hexdigest(),
+                f"SHA-256 mismatch for {label}",
+            )
+            bundle = asyncio.run(get_climate_features(query, mode_override="cached", settings=settings))
+            self.assertEqual(bundle.data_mode, "cached")
+            self.assertFalse(bundle.synthetic)
+            self.assertEqual(bundle.quality, "complete")
+            feat_map = {f.feature_id: f for f in bundle.features}
+            self.assertEqual(feat_map["total_precipitation_mm"].valid_days, 366)
+            self.assertEqual(feat_map["total_precipitation_mm"].expected_days, 366)
+            self.assertAlmostEqual(
+                feat_map["total_precipitation_mm"].value or 0.0,
+                expected_precip,
+                places=2,
+            )
+
+        catalog = get_crop_catalog(settings)
+        self.assertEqual(len(catalog.crops), 6)
+        self.assertEqual(len(catalog.rules), 7)
+        for crop in catalog.crops:
+            self.assertNotEqual(crop.validation_status, "expert_reviewed")
+        for rule in catalog.rules:
+            self.assertNotEqual(rule.validation_status, "expert_reviewed")
+
 
 if __name__ == "__main__":
     unittest.main()
