@@ -1,0 +1,172 @@
+{
+  "contract_version": "0.1.0",
+  "query": {
+    "latitude": 41.19,
+    "longitude": 47.17,
+    "start_date": "2024-01-01",
+    "end_date": "2024-12-31",
+    "time_standard": "UTC"
+  },
+  "data_mode": "cached",
+  "dataset_version": "nasa-power-2024-01-01-2024-12-31-76373e22397a",
+  "features": [
+    {
+      "feature_id": "mean_temperature",
+      "value": 15.65,
+      "unit": "C",
+      "period_start": "2024-01-01",
+      "period_end": "2024-12-31",
+      "aggregation": "mean",
+      "source_ids": [
+        "nasa-power-76373e22397a"
+      ],
+      "parameter_codes": [
+        "T2M"
+      ],
+      "coverage_ratio": 1.0,
+      "valid_days": 366,
+      "expected_days": 366,
+      "quality_flags": [],
+      "reason": null,
+      "method_version": "power-pipeline-0.1.0"
+    },
+    {
+      "feature_id": "min_temperature",
+      "value": -4.08,
+      "unit": "C",
+      "period_start": "2024-01-01",
+      "period_end": "2024-12-31",
+      "aggregation": "min",
+      "source_ids": [
+        "nasa-power-76373e22397a"
+      ],
+      "parameter_codes": [
+        "T2M_MIN"
+      ],
+      "coverage_ratio": 1.0,
+      "valid_days": 366,
+      "expected_days": 366,
+      "quality_flags": [],
+      "reason": null,
+      "method_version": "power-pipeline-0.1.0"
+    },
+    {
+      "feature_id": "max_temperature",
+      "value": 37.17,
+      "unit": "C",
+      "period_start": "2024-01-01",
+      "period_end": "2024-12-31",
+      "aggregation": "max",
+      "source_ids": [
+        "nasa-power-76373e22397a"
+      ],
+      "parameter_codes": [
+        "T2M_MAX"
+      ],
+      "coverage_ratio": 1.0,
+      "valid_days": 366,
+      "expected_days": 366,
+      "quality_flags": [],
+      "reason": null,
+      "method_version": "power-pipeline-0.1.0"
+    },
+    {
+      "feature_id": "total_precipitation_mm",
+      "value": 588.52,
+      "unit": "mm",
+      "period_start": "2024-01-01",
+      "period_end": "2024-12-31",
+      "aggregation": "sum",
+      "source_ids": [
+        "nasa-power-76373e22397a"
+      ],
+      "parameter_codes": [
+        "PRECTOTCORR"
+      ],
+      "coverage_ratio": 1.0,
+      "valid_days": 366,
+      "expected_days": 366,
+      "quality_flags": [],
+      "reason": null,
+      "method_version": "power-pipeline-0.1.0"
+    },
+    {
+      "feature_id": "frost_days_count",
+      "value": 28.0,
+      "unit": "day",
+      "period_start": "2024-01-01",
+      "period_end": "2024-12-31",
+      "aggregation": "count",
+      "source_ids": [
+        "nasa-power-76373e22397a"
+      ],
+      "parameter_codes": [
+        "T2M_MIN"
+      ],
+      "coverage_ratio": 1.0,
+      "valid_days": 366,
+      "expected_days": 366,
+      "quality_flags": [],
+      "reason": null,
+      "method_version": "power-pipeline-0.1.0"
+    },
+    {
+      "feature_id": "wet_days_count",
+      "value": 111.0,
+      "unit": "day",
+      "period_start": "2024-01-01",
+      "period_end": "2024-12-31",
+      "aggregation": "count",
+      "source_ids": [
+        "nasa-power-76373e22397a"
+      ],
+      "parameter_codes": [
+        "PRECTOTCORR"
+      ],
+      "coverage_ratio": 1.0,
+      "valid_days": 366,
+      "expected_days": 366,
+      "quality_flags": [],
+      "reason": null,
+      "method_version": "power-pipeline-0.1.0"
+    }
+  ],
+  "sources": [
+    {
+      "id": "nasa-power-76373e22397a",
+      "provider": "NASA LaRC POWER",
+      "dataset": "POWER Daily Point (v2.10.3)",
+      "source_url": "https://power.larc.nasa.gov/docs/services/api/temporal/daily/",
+      "request_url": "https://power.larc.nasa.gov/api/temporal/daily/point?parameters=T2M%2CT2M_MIN%2CT2M_MAX%2CPRECTOTCORR&community=AG&longitude=47.17&latitude=41.19&start=20240101&end=20241231&format=JSON&time-standard=UTC",
+      "retrieved_at": "2026-11-14T11:45:33.670732Z",
+      "observation_start": "2024-01-01",
+      "observation_end": "2024-12-31",
+      "time_standard": "UTC",
+      "parameter_codes": [
+        "T2M",
+        "T2M_MIN",
+        "T2M_MAX",
+        "PRECTOTCORR"
+      ],
+      "units": {
+        "T2M": "C",
+        "T2M_MIN": "C",
+        "T2M_MAX": "C",
+        "PRECTOTCORR": "mm/day"
+      },
+      "spatial_resolution": {
+        "T2M": "0.5 x 0.625 deg (MERRA2 reanalysis grid; cell elevation 312.57 m)",
+        "T2M_MIN": "0.5 x 0.625 deg (MERRA2 reanalysis grid; cell elevation 312.57 m)",
+        "T2M_MAX": "0.5 x 0.625 deg (MERRA2 reanalysis grid; cell elevation 312.57 m)",
+        "PRECTOTCORR": "0.5 x 0.625 deg (MERRA2 reanalysis grid; cell elevation 312.57 m)"
+      },
+      "payload_sha256": "76373e22397a21421e4f1e1c842652ff2c70392ab0b56b3bd2520056f392a9f3",
+      "source_kind": "upstream_dataset"
+    }
+  ],
+  "quality": "complete",
+  "warnings": [
+    "NASA POWER MERRA-2 grid cell elevation is 312.57 m; point temperatures reflect grid-cell elevation rather than micro-plot station readings."
+  ],
+  "synthetic": false
+}
