@@ -79,3 +79,16 @@
 }
 ```
 - Change `scenario` to `{"kind": "rainfall_stress", "rainfall_multiplier": 0.9}` (feasible shift) or `0.7` (`no_feasible_plan` under pure rainfed).
+
+---
+
+## 5. Verified 2024 Azerbaijan Regional Snapshots (`cached` & `live` Ready)
+
+All four 2024 (`2024-01-01` .. `2024-12-31`, `366/366` days, `AG`, `UTC`) coordinates below have committed, SHA-256-audited NASA POWER snapshots in `data/raw/` & `data/processed/`, so Role A can test and switch across them seamlessly in both `cached` and `live` modes (never falling back across mismatched coordinates):
+
+| Region | Coordinates (`lat, lon`) | `query_hash` | 2024 Precip (`PRECTOTCORR`) | 2024 Mean `T2M` | `cached` & `live` Status |
+|---|---|---|---|---|---|
+| **Ganja (Pilot Demo)** | `40.68, 46.36` | `552e40e213b9f7b8` | `506.52 mm` | `10.58 °C` | Ready (`cached` + `live`) |
+| **Aran / Barda-Yevlakh** | `40.38, 47.12` | `a56184dd09acd946` | `457.50 mm` | `15.70 °C` | Ready (`cached` + `live`) |
+| **Quba-Khachmaz** | `41.36, 48.51` | `f850af6ab056dbf6` | `516.20 mm` | `15.04 °C` | Ready (`cached` + `live`) |
+| **Sheki-Zaqatala** | `41.19, 47.17` | `3f72f4396abc697d` | `588.52 mm` | `15.65 °C` | Ready (`cached` + `live`) |
