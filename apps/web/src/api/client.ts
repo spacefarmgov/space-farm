@@ -1,6 +1,7 @@
 import type {
   ClimateBundle,
   CropCatalog,
+  DataMode,
   ErrorEnvelope,
   HealthResponse,
   SimulationRequest,
@@ -59,6 +60,7 @@ export function getClimateFeatures(
     start_date: string;
     end_date: string;
     time_standard?: "UTC";
+    mode?: DataMode;
   },
   signal?: AbortSignal
 ): Promise<ClimateBundle> {
@@ -69,6 +71,9 @@ export function getClimateFeatures(
     end_date: params.end_date,
     time_standard: params.time_standard ?? "UTC",
   });
+  if (params.mode) {
+    qs.set("mode", params.mode);
+  }
   return requestJson<ClimateBundle>(`/api/v1/climate/features?${qs.toString()}`, {
     method: "GET",
     signal,
@@ -77,9 +82,11 @@ export function getClimateFeatures(
 
 export function runSimulation(
   payload: SimulationRequest,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  mode?: DataMode
 ): Promise<SimulationResponse> {
-  return requestJson<SimulationResponse>("/api/v1/simulations", {
+  const qs = mode ? `?mode=${encodeURIComponent(mode)}` : "";
+  return requestJson<SimulationResponse>(`/api/v1/simulations${qs}`, {
     method: "POST",
     body: JSON.stringify(payload),
     signal,

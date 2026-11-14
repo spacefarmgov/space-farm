@@ -34,6 +34,14 @@ export interface HealthResponse {
   data_mode_default: DataMode;
 }
 
+export interface AgronomicReference {
+  rule_id: string;
+  source_name: string;
+  source_url: string;
+  citation: string;
+  checked_at: string;
+}
+
 export interface CropInfo {
   crop_id: string;
   name: string;
@@ -57,6 +65,36 @@ export interface CropInfo {
     optimal_min_mm: number | null;
     optimal_max_mm: number | null;
   } | null;
+  predecessor_rules?: {
+    avoid_consecutive_same_crop: boolean;
+    avoid_consecutive_same_family: boolean;
+    nitrogen_contribution: "fixes_nitrogen" | "neutral" | "heavy_feeder";
+    preferred_predecessor_families: string[];
+    disallowed_predecessor_crops: string[];
+  };
+  objective_inputs?: {
+    water_efficiency_hint: number | null;
+    soil_health_contribution: number | null;
+    income_model_available: boolean;
+    income_unavailable_reason: string;
+  };
+  references?: AgronomicReference[];
+  validation_status: ValidationStatus;
+}
+
+export interface AgronomicRule {
+  rule_id: string;
+  rule_type: "hard_constraint" | "soft_scoring" | "provisional_notice";
+  crop_ids: string[];
+  families: string[];
+  condition: string;
+  severity: "hard" | "warning" | "info";
+  threshold: number | number[] | string | null;
+  unit: string | null;
+  region: string;
+  applicability: string;
+  source_url: string;
+  checked_at: string;
   validation_status: ValidationStatus;
 }
 
@@ -64,6 +102,7 @@ export interface CropCatalog {
   catalog_version: string;
   rules_version: string;
   crops: CropInfo[];
+  rules?: AgronomicRule[];
 }
 
 export interface ClimateFeature {
