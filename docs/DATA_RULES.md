@@ -78,9 +78,9 @@ Bir illik tarixçədən “iqlim norması” və ya statistik anomaliya çıxar�
 ## Canlı mənbə reyestri
 | ID | Mənbə | Yoxlama vaxtı | Sorğu/sübut | Status |
 |---|---|---|---|---|
-| NASA-01 | POWER Daily sənədi | Paketdə sənəd yoxlanıb; C yenidən API yoxlayır | Yuxarıdakı link | DOCUMENTATION_ONLY |
-| NASA-02 | Demo raw JSON | — | — | NOT_FETCHED |
-| AGR-01 | Məhsul qaydaları | — | — | NOT_VERIFIED |
+| NASA-01 | POWER Daily sənədi & API (`v2.10.3`) | 2026-11-14 | `https://power.larc.nasa.gov/api/temporal/daily/point` (`T2M`, `T2M_MIN`, `T2M_MAX`, `PRECTOTCORR`, `AG`, `UTC`) | VERIFIED |
+| NASA-02 | Demo raw JSON (Gəncə 2024) | 2026-11-14 | `data/raw/552e40e213b9f7b8.json` + `data/processed/552e40e213b9f7b8.manifest.json` (`366/366` gün, SHA-256 `22b70694bb786042a84df2371af88ddca8b0485858b8ce51e20d1cb99474bf44`) | VERIFIED |
+| AGR-01 | Məhsul kataloqu və qaydalar | 2026-11-14 | `data/catalog/crops.json` & `data/catalog/rules.json` (FAO Paper 56 / CROPWAT əsaslı; lokal ekspert rəyi yoxdur) | PROVISIONAL_SOURCE_SUPPORTED |
 
 Mənbə təsdiqi və istifadə olunan real nəticələr hər PR-də `docs/status/data.md`-də yazılır.
 

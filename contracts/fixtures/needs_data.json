@@ -1,0 +1,147 @@
+{
+  "contract_version": "0.1.0",
+  "request_id": "fixture-needs-data-001",
+  "simulation_id": "eb63d31a-2e34-4b1f-b7e0-99a69ba7bc0c",
+  "created_at": "2026-11-14T10:58:18.864112Z",
+  "model_version": "rotation-engine-0.1.0",
+  "rules_version": "agronomy-rules-0.1.0",
+  "catalog_version": "crops-0.1.0",
+  "dataset_version": "synthetic-demo-fixture-v0.1.0",
+  "status": "needs_data",
+  "data_mode": "demo_fixture",
+  "input_summary": {
+    "farm_id": "ganja-demo",
+    "climate_period": {
+      "start_date": "2024-01-01",
+      "end_date": "2024-12-31"
+    },
+    "horizon_years": 3,
+    "scenario": {
+      "kind": "baseline",
+      "rainfall_multiplier": 1.0
+    },
+    "effective_precipitation_mm": 506.5,
+    "effective_water_supply_mm": 506.5,
+    "soil_ph_known": true,
+    "irrigation_type": "rainfed"
+  },
+  "weights_requested": {
+    "water": 0.0,
+    "soil": 0.0,
+    "income": 1.0
+  },
+  "weights_effective": {
+    "water": 0.0,
+    "soil": 0.0,
+    "income": 0.0
+  },
+  "unavailable_objectives": [
+    {
+      "objective": "income",
+      "reason": "No verified regional crop price, cost, or gross-margin dataset is available in MVP v0.1.0; AZN/profit metrics are withheld."
+    }
+  ],
+  "plans": [],
+  "climate": {
+    "contract_version": "0.1.0",
+    "query": {
+      "latitude": 40.68,
+      "longitude": 46.36,
+      "start_date": "2024-01-01",
+      "end_date": "2024-12-31",
+      "time_standard": "UTC"
+    },
+    "data_mode": "demo_fixture",
+    "dataset_version": "synthetic-demo-fixture-v0.1.0",
+    "features": [
+      {
+        "feature_id": "mean_temperature",
+        "value": 10.6,
+        "unit": "C",
+        "period_start": "2024-01-01",
+        "period_end": "2024-12-31",
+        "aggregation": "mean",
+        "source_ids": [
+          "synthetic-demo-source"
+        ],
+        "parameter_codes": [
+          "T2M"
+        ],
+        "coverage_ratio": 1.0,
+        "valid_days": 366,
+        "expected_days": 366,
+        "quality_flags": [
+          "SYNTHETIC_CONTRACT_FIXTURE"
+        ],
+        "reason": null,
+        "method_version": "power-pipeline-0.1.0"
+      },
+      {
+        "feature_id": "total_precipitation_mm",
+        "value": 506.5,
+        "unit": "mm",
+        "period_start": "2024-01-01",
+        "period_end": "2024-12-31",
+        "aggregation": "sum",
+        "source_ids": [
+          "synthetic-demo-source"
+        ],
+        "parameter_codes": [
+          "PRECTOTCORR"
+        ],
+        "coverage_ratio": 1.0,
+        "valid_days": 366,
+        "expected_days": 366,
+        "quality_flags": [
+          "SYNTHETIC_CONTRACT_FIXTURE"
+        ],
+        "reason": null,
+        "method_version": "power-pipeline-0.1.0"
+      }
+    ],
+    "sources": [
+      {
+        "id": "synthetic-demo-source",
+        "provider": "Synthetic Contract Fixture (Not Real NASA Data)",
+        "dataset": "demo_fixture",
+        "source_url": "https://power.larc.nasa.gov/docs/services/api/temporal/daily/",
+        "request_url": "synthetic://demo_fixture/ganja-2024",
+        "retrieved_at": "2026-11-14T00:00:00Z",
+        "observation_start": "2024-01-01",
+        "observation_end": "2024-12-31",
+        "time_standard": "UTC",
+        "parameter_codes": [
+          "T2M",
+          "PRECTOTCORR"
+        ],
+        "units": {
+          "T2M": "C",
+          "PRECTOTCORR": "mm/day"
+        },
+        "spatial_resolution": {
+          "T2M": "synthetic",
+          "PRECTOTCORR": "synthetic"
+        },
+        "payload_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "source_kind": "upstream_dataset"
+      }
+    ],
+    "quality": "complete",
+    "warnings": [
+      "SYNTHETIC CONTRACT FIXTURE ONLY (synthetic=true): not live NASA POWER observations."
+    ],
+    "synthetic": true
+  },
+  "warnings": [
+    "SYNTHETIC CONTRACT FIXTURE ONLY (synthetic=true): not live NASA POWER observations.",
+    "Requested 'income' priority is unavailable in MVP v0.1.0 (no verified regional economic dataset); effective weights normalized to water=0.000, soil=0.000.",
+    "All requested active weights belong to unavailable objectives (income=1.0); provide weight for water and/or soil to rank feasible plans."
+  ],
+  "rejected_summary": [],
+  "limitations": [
+    "Agronomic water and pH bounds come from generalized FAO literature (source_supported/provisional) and await local Azerbaijan agronomist validation.",
+    "NASA POWER Daily Point observations reflect a ~0.5x0.625 deg MERRA-2 grid cell rather than on-farm soil moisture probes or micro-climate stations.",
+    "3-year rotation scoring uses historical period climate features as a baseline stress lens, not a 3-year seasonal weather forecast."
+  ],
+  "synthetic": true
+}

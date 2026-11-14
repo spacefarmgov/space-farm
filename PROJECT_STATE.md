@@ -1,48 +1,41 @@
 # Canlı layihə vəziyyəti — Space Farm (Team CODE44)
 Owner: B • Snapshot: 14.11.2026 • Saat qurşağı: Asia/Baku
 Hədəf ictimai repo: https://github.com/spacefarmgov/space-farm
-Son konsolidasiya: hazırlıq paketi vahid Space Farm kimliyinə uyğunlaşdırılıb (tətbiq kodu hələ yazılmayıb)
-develop commit: lokal hazırlıq mərhələsi / B-01 gözləyir
-Kontrakt: 0.1.0 DRAFT — B-01 bootstrap zamanı dondurulacaq
+Son konsolidasiya: Backend (`services/api`), real NASA POWER Gəncə 2024 snapshot-ı, `v0.1.0` OpenAPI + 6 sintetik fixture və frontend foundation skeleti (`apps/web`) qurulub, yoxlanıb və `develop`-a birləşdirilməyə hazırlanıb.
+Kontrakt: 0.1.0 FROZEN — `contracts/openapi.json` və 6 sintetik fixture (`contracts/fixtures/`) generasiya edilib.
 
 ## Hazırda məlum olan (Faktiki vəziyyət)
-- **Hazır olan (Sənədləşmə və İdarəetmə qatı):** Space Farm vahid kimliyi, ingilis dilli münsif `README.md`, `LICENSE` (MIT + ayrı NASA data şərtləri), `.gitignore`, `.env.example`, arxitektura planı, `v0.1.0 DRAFT` API müqaviləsi, data qaydaları, 24 qəbul testi matrisi, Git iş axını və rol promptları hazırdır.
-- **Hazır olmayan (Tətbiq və Data):** Tətbiq kodu (`apps/web/`, `services/api/`), real NASA POWER JSON snapshot-ı, canlı demo və deploy hələ mövcud deyil.
-- **Dizayn:** Hələ seçilməyib (`A-00` gözləyir).
-- **Yarış uyğunluğu:** 2026 NASA Space Apps Challenge — *Field Shift: Adapting Farms with NASA Data* hədəf seçilib; son local event deadline və təşkilatçı elanları `R-01`-də yoxlanmalıdır.
+- **Hazır və yoxlanılmış (Lokal Backend & Data):**
+  - `services/api/`: FastAPI tətbiqi, `v0.1.0` Pydantic sxemaları, `/api/v1/{health,crops,climate/features,simulations}`, standart `ErrorEnvelope`, deterministik 3 illik rotasiya və skor mühərriki.
+  - `services/api/app/data_adapters/` + `tools/data/fetch_power.py`: real NASA POWER Daily Point (`v2.10.3`, `AG`, `UTC`) sorğusu icra edildi; Gəncə (`40.68, 46.36`, `2024-01-01..2024-12-31`, `366/366` gün, `T2M` orta `10.58 C`, `PRECTOTCORR` `506.52 mm`, `query_hash=552e40e213b9f7b8`, `SHA-256: 22b70694bb786042a84df2371af88ddca8b0485858b8ce51e20d1cb99474bf44`) `data/raw/` və `data/processed/` altında saxlandı.
+  - `data/catalog/`: 6 namizəd bitki (`crops.json`) və FAO Paper 56 / CROPWAT əsaslı qaydalar (`rules.json`, `source_supported` / `provisional`).
+  - Test sübutu: `python -m unittest discover -s services/api/tests -t services/api -v` (`24/24` PASS) və `python -m unittest tests/e2e/verify_live_e2e.py -v` (`1/1` live NASA POWER E2E PASS).
+- **Hazırlıq / Komanda tərəfindən davam etdirilən:**
+  - `apps/web/`: Frontend komandası (Rol A) üçün `v0.1.0` TypeScript API tipləri (`src/api/types.ts`), abort-safe API client (`src/api/client.ts`) və minimal Vite foundation shell hazırdır; tam UI ekranları (`A-00`–`A-05`) komanda tərəfindən işlənir.
+  - İctimai bulud deploy linki (`B-05`) və GitHub-a push (istifadəçi təsdiqindən sonra).
+  - Komanda üzvlərinin fərdi GitHub username-lərinin `TEAM_RULES.md`-yə yazılması (`BL-01`).
+  - Yerli aqronom ekspert yoxlaması (bütün bitki qaydaları `source_supported` / `provisional` olaraq saxlanır).
+  - Rəsmi challenge yerli tədbir deadline və son resurs yoxlaması (`R-01`).
 
 ## İnteqrasiya vəziyyəti
 | Hissə | Status | Sübut | Növbəti owner |
 |---|---|---|---|
-| Repo kimliyi, README, LICENSE, .env.example | READY | Kök fayllar və sənədlər hazırlanıb | B |
-| Foundation (`apps/web` + `services/api` skeleti) | TODO | — | B |
-| Design selected (`A-00`) | TODO | — | A + komanda |
-| Frontend (`A-01`–`A-05`) | TODO | — | A |
-| Real NASA data (`C-00`–`C-04`) | TODO | — | C |
-| Engine/API (`B-02`–`B-04`) | TODO | — | B |
-| End-to-end demo (`B-05`) | TODO | — | B, A/C dəstəyi |
-| Deploy/pitch (`R-01`–`R-03`) | TODO | — | B + komanda |
+| Repo kimliyi, README, LICENSE, .env.example | READY | Kök fayllar, `infra/`, `infra/ci/github-actions-ci.yml` hazırdır | B |
+| Foundation (`apps/web` skeleti + `contracts/`) | VERIFIED_LOCAL | `contracts/openapi.json` + 6 fixture + `apps/web/src/api/` | B |
+| Real NASA data (`C-00`–`C-03`) | VERIFIED_LOCAL | `data/raw/552e40e213b9f7b8.json` + manifest + `9/9` data testi PASS | C |
+| Engine/API (`B-02`–`B-04`) | VERIFIED_LOCAL | `15/15` API/engine/kontrakt testi PASS (`T09`–`T16`) | B |
+| End-to-end backend (`T22`) | VERIFIED_LOCAL | `tests/e2e/verify_live_e2e.py` canlı NASA POWER cavabı ilə PASS | B |
+| Frontend UI (`A-00`–`A-05`) | IN_PROGRESS | Komanda tərəfindən işlənir (foundation shell hazır) | A |
+| Deploy/pitch (`B-05`, `R-01`–`R-03`) | TODO | İctimai deploy, GitHub push və 2 dəqiqəlik demo gözləyir | B + komanda |
 
 ## Bloklayıcılar
-| ID | Məsələ | Həll edən | Digərləri bu vaxt nə edə bilər? |
+| ID | Məsələ | Həll edən | Status / Qeyd |
 |---|---|---|---|
-| BL-01 | A/B/C rol sahiblərinin adları və GitHub username-ləri `TEAM_RULES.md`-yə yazılmayıb (repo URL müəyyəndir: `spacefarmgov/space-farm`) | Komanda/B | Dizayn və PDF oxunuşu |
-| BL-02 | FOUNDATION_READY yoxdur (`B-01` tətbiq skeleti hələ qurulmayıb) | B | A dizayn (`A-00`), C NASA POWER mənbə yoxlaması (`C-00`) |
-| BL-03 | Real NASA POWER sorğusu hələ icra edilməyib (`NASA-02: NOT_FETCHED`) | C | Sintetik müqavilə fixture-ləri ilə development |
+| BL-01 | A/B/C rol sahiblərinin fərdi GitHub username-ləri `TEAM_RULES.md`-də hələ yazılmayıb | Komanda/B | OPEN (repo `spacefarmgov/space-farm` yaradılıb) |
+| BL-02 | FOUNDATION_READY | B | RESOLVED (2026-11-14: arxitektura, `services/api`, `contracts/`, `apps/web/` skeleti qurulub) |
+| BL-03 | Real NASA POWER sorğusu | C | RESOLVED (2026-11-14: real Gəncə 2024 JSON + SHA-256 manifest yoxlanıb) |
 
 ## Növbəti üç addım
-1. B (`B-00` / `B-01`): `https://github.com/spacefarmgov/space-farm` reposunda branch-ları sinxronlaşdırmaq, rol sahiblərini yazmaq, bootstrap skeleti və `0.1.0` kontraktını dondurmaq.
-2. A (`A-00`): müqayisə edilə bilən üç dizayn variantı hazırlamaq və komanda seçimini `docs/DESIGN_BRIEF.md`-də qeyd etmək.
-3. C (`C-00` / `C-01`): NASA POWER Daily sənədini və yağıntı parametrini canlı yoxlayıb ilk real raw JSON + SHA-256 manifest sübutunu çıxarmaq.
-
-## Son inteqrasiya
-Hələ yoxdur. Gələcəkdə: tarix/saat, PR, source SHA, nəticə, test sübutu, kontrakt versiyası.
-
-## Merge olunmamış işlər
-Hələ yoxlanmayıb. Branch journal-da hazır yazılması develop-da hazır olması demək deyil.
-
-## Yeniləmə qaydası
-B hər merge dövründən sonra develop-da olan üç jurnalı oxuyur; yalnız yoxlanmış faktları birləşdirir.
-Son konsolidasiya vaxtını və istinad commitini yazır. Köhnə bloklayıcını səbəbsiz silmir; həll tarixini qeyd edir.
-Bu fayl avtomatik Git kilidi və ya real vaxt koordinasiya xidməti deyil.
-
+1. İstifadəçi təsdiqindən sonra `feat/backend-core` işlərini GitHub-a (`spacefarmgov/space-farm`) push etmək və `develop`-a birləşdirmək.
+2. Rol A: `apps/web/src/api/` müqaviləsi üzərində UI komponentlərini (`A-01`–`A-05`) tamamlamaq.
+3. Rol B: İctimai deploy (`B-05`) və rəsmi challenge yoxlamasını (`R-01`, `R-03`) bitirmək.

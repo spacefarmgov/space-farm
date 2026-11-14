@@ -1,0 +1,40 @@
+name: Space Farm CI
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main, "feat/*"]
+
+jobs:
+  backend-tests:
+    name: Backend Unit & Contract Tests (T01-T16, T23)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install API package
+        run: |
+          cd services/api
+          pip install -e .
+      - name: Run unittest suite
+        run: python -m unittest discover -s services/api/tests -t services/api -v
+      - name: Verify OpenAPI schema is up to date
+        run: |
+          python -c "import json, sys; sys.path.insert(0, 'services/api'); from app.main import app; committed = json.load(open('contracts/openapi.json')); assert committed['paths'] == app.openapi()['paths']"
+
+  frontend-typecheck:
+    name: Frontend Typecheck & Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install & build web shell
+        run: |
+          cd apps/web
+          npm install
+          npm run build
