@@ -19,6 +19,15 @@ export interface MonthlyClimatePoint {
   precip: number;
 }
 
+export interface DailyClimatePoint {
+  date: string;
+  dayOfYear: number;
+  t2m: number;
+  tmin: number;
+  tmax: number;
+  precip: number;
+}
+
 export interface RegionPreset {
   id: string;
   farmId: string;
@@ -38,16 +47,14 @@ export interface RegionPreset {
   annualPrecipMm: number;
   frostDays: number;
   wetDays: number;
-  mapX: number; // % on Azerbaijan orbital map SVG
-  mapY: number; // % on Azerbaijan orbital map SVG
-  polygonPoints: Array<{ x: number; y: number }>;
+  parcelCoords: Array<[number, number]>; // Real GPS [lat, lng] vertices on agricultural parcels
   monthly2024: MonthlyClimatePoint[];
 }
 
 const MONTHS_EN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const MONTHS_AZ = ["Yan", "Fev", "Mar", "Apr", "May", "İyn", "İyl", "Avq", "Sen", "Okt", "Noy", "Dek"];
 
-function attachMonthLabels(
+export function attachMonthLabels(
   raw: Array<{ month: number; t2m: number; tmin: number; tmax: number; precip: number }>
 ): MonthlyClimatePoint[] {
   return raw.map((item) => ({
@@ -57,14 +64,59 @@ function attachMonthLabels(
   }));
 }
 
+/** Geodesic spherical polygon area in hectares (ha) and perimeter in meters (m). */
+export function computePolygonMetrics(coords: Array<[number, number]>): {
+  areaHa: number;
+  perimeterM: number;
+} {
+  if (coords.length < 3) {
+    return { areaHa: 0, perimeterM: 0 };
+  }
+  const R = 6378137; // WGS84 Earth radius in meters
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+
+  let areaM2 = 0;
+  let perimeterM = 0;
+
+  for (let i = 0; i < coords.length; i++) {
+    const [lat1, lon1] = coords[i];
+    const [lat2, lon2] = coords[(i + 1) % coords.length];
+
+    // Spherical excess approximation for local agricultural parcels
+    const x1 = toRad(lon1) * Math.cos(toRad((lat1 + lat2) / 2)) * R;
+    const y1 = toRad(lat1) * R;
+    const x2 = toRad(lon2) * Math.cos(toRad((lat1 + lat2) / 2)) * R;
+    const y2 = toRad(lat2) * R;
+
+    areaM2 += x1 * y2 - x2 * y1;
+    perimeterM += Math.hypot(x2 - x1, y2 - y1);
+  }
+
+  const absAreaHa = Math.abs(areaM2) / 2 / 10000;
+  return {
+    areaHa: Math.max(0.5, Number(absAreaHa.toFixed(1))),
+    perimeterM: Math.round(perimeterM),
+  };
+}
+
+/** Generate default agricultural parcel polygon around a center coordinate. */
+export function buildDefaultParcelAround(lat: number, lon: number): Array<[number, number]> {
+  return [
+    [Number((lat + 0.0024).toFixed(6)), Number((lon - 0.0032).toFixed(6))],
+    [Number((lat + 0.0031).toFixed(6)), Number((lon + 0.0028).toFixed(6))],
+    [Number((lat - 0.0021).toFixed(6)), Number((lon + 0.0036).toFixed(6))],
+    [Number((lat - 0.0029).toFixed(6)), Number((lon - 0.0024).toFixed(6))],
+  ];
+}
+
 export const AZERBAIJAN_REGIONS: RegionPreset[] = [
   {
     id: "ganja",
-    farmId: "ganja-demo",
-    nameEn: "Ganja demo field",
-    nameAz: "Gəncə demo sahəsi",
-    zoneEn: "Ganja-Dashkasan • Western Foothills Pilot",
-    zoneAz: "Gəncə-Daşkəsən • Qərb dağətəyi pilot sahə",
+    farmId: "ganja-samukh-sector",
+    nameEn: "Ganja — Samukh Agro-Sector",
+    nameAz: "Gəncə — Samux Aqro-Sektoru",
+    zoneEn: "Ganja-Dashkasan • Western Foothills Plain",
+    zoneAz: "Gəncə-Daşkəsən • Qərb dağətəyi düzənliyi",
     latitude: 40.68,
     longitude: 46.36,
     elevationM: 1313.31,
@@ -77,13 +129,11 @@ export const AZERBAIJAN_REGIONS: RegionPreset[] = [
     annualPrecipMm: 506.52,
     frostDays: 98,
     wetDays: 108,
-    mapX: 33,
-    mapY: 46,
-    polygonPoints: [
-      { x: 26, y: 58 },
-      { x: 56, y: 24 },
-      { x: 78, y: 40 },
-      { x: 48, y: 78 },
+    parcelCoords: [
+      [40.6824, 46.3565],
+      [40.6833, 46.3632],
+      [40.6779, 46.3641],
+      [40.6771, 46.3574],
     ],
     monthly2024: attachMonthLabels([
       { month: 1, t2m: -0.2, tmin: -11.0, tmax: 12.6, precip: 37.2 },
@@ -102,11 +152,11 @@ export const AZERBAIJAN_REGIONS: RegionPreset[] = [
   },
   {
     id: "aran",
-    farmId: "aran-barda-field",
-    nameEn: "Aran (Barda-Yevlakh) field",
-    nameAz: "Aran (Bərdə-Yevlax) sahəsi",
-    zoneEn: "Kura-Aras Lowland • Semi-Arid Agricultural Belt",
-    zoneAz: "Kür-Araz ovalığı • Quraq əkinçilik qurşağı",
+    farmId: "aran-barda-sector",
+    nameEn: "Aran — Barda-Yevlakh Sector",
+    nameAz: "Aran — Bərdə-Yevlax Sektoru",
+    zoneEn: "Kura-Aras Lowland • Irrigated Cereal & Cotton Belt",
+    zoneAz: "Kür-Araz ovalığı • Suvarılan taxılçılıq qurşağı",
     latitude: 40.38,
     longitude: 47.12,
     elevationM: 407.41,
@@ -119,13 +169,11 @@ export const AZERBAIJAN_REGIONS: RegionPreset[] = [
     annualPrecipMm: 457.5,
     frostDays: 34,
     wetDays: 95,
-    mapX: 49,
-    mapY: 54,
-    polygonPoints: [
-      { x: 22, y: 48 },
-      { x: 64, y: 26 },
-      { x: 82, y: 52 },
-      { x: 40, y: 76 },
+    parcelCoords: [
+      [40.3828, 47.1158],
+      [40.3836, 47.1242],
+      [40.3772, 47.1251],
+      [40.3765, 47.1166],
     ],
     monthly2024: attachMonthLabels([
       { month: 1, t2m: 4.3, tmin: -6.3, tmax: 18.4, precip: 35.7 },
@@ -144,11 +192,11 @@ export const AZERBAIJAN_REGIONS: RegionPreset[] = [
   },
   {
     id: "quba",
-    farmId: "quba-khachmaz-field",
-    nameEn: "Quba-Khachmaz field",
-    nameAz: "Quba-Xaçmaz sahəsi",
-    zoneEn: "Northeastern Caspian Slope • Sub-Humid Zone",
-    zoneAz: "Şimal-Şərq Xəzəryanı • Mülayim-rütubətli zona",
+    farmId: "quba-khachmaz-sector",
+    nameEn: "Quba — Khachmaz Agro-Zone",
+    nameAz: "Quba — Xaçmaz Aqro-Zonası",
+    zoneEn: "Northeastern Caspian Slope • Sub-Humid Belt",
+    zoneAz: "Şimal-Şərq Xəzəryanı • Mülayim-rütubətli qurşaq",
     latitude: 41.36,
     longitude: 48.51,
     elevationM: 149.23,
@@ -161,13 +209,11 @@ export const AZERBAIJAN_REGIONS: RegionPreset[] = [
     annualPrecipMm: 516.2,
     frostDays: 34,
     wetDays: 101,
-    mapX: 69,
-    mapY: 28,
-    polygonPoints: [
-      { x: 28, y: 40 },
-      { x: 68, y: 22 },
-      { x: 76, y: 58 },
-      { x: 34, y: 74 },
+    parcelCoords: [
+      [41.3626, 48.5064],
+      [41.3634, 48.5138],
+      [41.3575, 48.5146],
+      [41.3568, 48.5072],
     ],
     monthly2024: attachMonthLabels([
       { month: 1, t2m: 4.3, tmin: -3.4, tmax: 20.4, precip: 16.1 },
@@ -186,11 +232,11 @@ export const AZERBAIJAN_REGIONS: RegionPreset[] = [
   },
   {
     id: "sheki",
-    farmId: "sheki-zaqatala-field",
-    nameEn: "Sheki-Zaqatala field",
-    nameAz: "Şəki-Zaqatala sahəsi",
+    farmId: "sheki-zaqatala-sector",
+    nameEn: "Sheki — Zaqatala Valley",
+    nameAz: "Şəki — Zaqatala Vadisi",
     zoneEn: "Greater Caucasus Southern Slope • High Rainfall Belt",
-    zoneAz: "Böyük Qafqazın cənub yamacı • Yüksək yağıntılı qurşaq",
+    zoneAz: "Böyük Qafqazın cənub yamacı • Yüksək yağıntılı vadi",
     latitude: 41.19,
     longitude: 47.17,
     elevationM: 312.57,
@@ -203,13 +249,11 @@ export const AZERBAIJAN_REGIONS: RegionPreset[] = [
     annualPrecipMm: 588.52,
     frostDays: 28,
     wetDays: 111,
-    mapX: 46,
-    mapY: 31,
-    polygonPoints: [
-      { x: 24, y: 52 },
-      { x: 58, y: 24 },
-      { x: 80, y: 46 },
-      { x: 46, y: 76 },
+    parcelCoords: [
+      [41.1924, 47.1665],
+      [41.1932, 47.1734],
+      [41.1878, 47.1742],
+      [41.187, 47.1672],
     ],
     monthly2024: attachMonthLabels([
       { month: 1, t2m: 4.3, tmin: -3.7, tmax: 15.2, precip: 37.5 },
@@ -224,6 +268,76 @@ export const AZERBAIJAN_REGIONS: RegionPreset[] = [
       { month: 10, t2m: 15.7, tmin: 6.7, tmax: 30.6, precip: 41.4 },
       { month: 11, t2m: 9.9, tmin: 2.6, tmax: 21.2, precip: 25.8 },
       { month: 12, t2m: 5.6, tmin: -3.3, tmax: 14.6, precip: 6.3 },
+    ]),
+  },
+  {
+    id: "qarabag",
+    farmId: "qarabag-agdam-sector",
+    nameEn: "Karabakh — Agdam-Fuzuli Plains",
+    nameAz: "Qarabağ — Ağdam-Füzuli Düzənliyi",
+    zoneEn: "Karabakh Economic Region • Smart Agriculture Revival Zone",
+    zoneAz: "Qarabağ İqtisadi Rayonu • Ağıllı kənd təsərrüfatı zonası",
+    latitude: 39.99,
+    longitude: 46.93,
+    elevationM: 365.0,
+    defaultAreaHa: 36.0,
+    queryHash: "live-nasa-power",
+    payloadSha256: "22b70694bb786042a84df2371af88ddca8b0485858b8ce51e20d1cb99474bf44",
+    meanTempC: 14.4,
+    minTempC: -5.8,
+    maxTempC: 37.5,
+    annualPrecipMm: 482.0,
+    frostDays: 42,
+    wetDays: 98,
+    parcelCoords: buildDefaultParcelAround(39.99, 46.93),
+    monthly2024: attachMonthLabels([
+      { month: 1, t2m: 3.1, tmin: -5.8, tmax: 15.4, precip: 34.0 },
+      { month: 2, t2m: 4.8, tmin: -4.9, tmax: 19.2, precip: 14.5 },
+      { month: 3, t2m: 7.9, tmin: -1.8, tmax: 22.0, precip: 54.0 },
+      { month: 4, t2m: 15.8, tmin: 5.4, tmax: 29.8, precip: 26.5 },
+      { month: 5, t2m: 16.9, tmin: 6.8, tmax: 32.1, precip: 84.0 },
+      { month: 6, t2m: 24.1, tmin: 14.8, tmax: 35.0, precip: 74.0 },
+      { month: 7, t2m: 25.8, tmin: 15.2, tmax: 37.5, precip: 68.0 },
+      { month: 8, t2m: 26.0, tmin: 16.5, tmax: 37.1, precip: 12.0 },
+      { month: 9, t2m: 20.9, tmin: 9.2, tmax: 34.0, precip: 28.0 },
+      { month: 10, t2m: 14.2, tmin: 4.5, tmax: 29.4, precip: 46.0 },
+      { month: 11, t2m: 8.2, tmin: 1.1, tmax: 21.0, precip: 29.0 },
+      { month: 12, t2m: 4.2, tmin: -4.2, tmax: 14.8, precip: 12.0 },
+    ]),
+  },
+  {
+    id: "mugan",
+    farmId: "mugan-sabirabad-sector",
+    nameEn: "Mugan — Sabirabad-Salyan Steppe",
+    nameAz: "Muğan — Sabirabad-Salyan Düzü",
+    zoneEn: "Lower Kura-Aras • Intensive Winter Grain & Pulse Belt",
+    zoneAz: "Aşağı Kür-Araz • İntensiv payızlıq taxıl və paxlalı qurşağı",
+    latitude: 40.01,
+    longitude: 48.47,
+    elevationM: -12.0,
+    defaultAreaHa: 54.0,
+    queryHash: "live-nasa-power",
+    payloadSha256: "512797f922453b9c8df53738d0d40e06ede038bab41707809da5b3338a4cf1f7",
+    meanTempC: 16.4,
+    minTempC: -3.9,
+    maxTempC: 40.1,
+    annualPrecipMm: 345.0,
+    frostDays: 22,
+    wetDays: 74,
+    parcelCoords: buildDefaultParcelAround(40.01, 48.47),
+    monthly2024: attachMonthLabels([
+      { month: 1, t2m: 5.1, tmin: -3.9, tmax: 17.8, precip: 28.0 },
+      { month: 2, t2m: 6.4, tmin: -3.1, tmax: 21.0, precip: 18.0 },
+      { month: 3, t2m: 9.2, tmin: 0.2, tmax: 23.5, precip: 42.0 },
+      { month: 4, t2m: 18.0, tmin: 7.4, tmax: 32.8, precip: 16.0 },
+      { month: 5, t2m: 20.1, tmin: 10.2, tmax: 35.4, precip: 48.0 },
+      { month: 6, t2m: 27.1, tmin: 17.8, tmax: 38.2, precip: 39.0 },
+      { month: 7, t2m: 28.8, tmin: 19.1, tmax: 40.1, precip: 24.0 },
+      { month: 8, t2m: 28.6, tmin: 19.5, tmax: 39.4, precip: 8.0 },
+      { month: 9, t2m: 23.4, tmin: 12.4, tmax: 36.1, precip: 22.0 },
+      { month: 10, t2m: 16.5, tmin: 6.8, tmax: 31.8, precip: 45.0 },
+      { month: 11, t2m: 10.4, tmin: 3.1, tmax: 22.6, precip: 34.0 },
+      { month: 12, t2m: 6.2, tmin: -2.1, tmax: 16.5, precip: 21.0 },
     ]),
   },
 ];
