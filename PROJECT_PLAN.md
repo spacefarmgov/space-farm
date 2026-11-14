@@ -17,7 +17,7 @@ Frontend HTTP sorğusu → B-nin route/validation qatı → C-nin data provider-
 C üçüncü tərəf API-ləri idarə edir. **Tətbiqin HTTP API-si B-yə aiddir.** Bu sərhəd iki nəfərin eyni API faylını yazmasının qarşısını alır.
 
 ## 3. Hədəf qovluqlar və sahiblər
-Aşağıdakı kod yolları bootstrap zamanı yaradılacaq; bu paketdə tətbiq kodu yoxdur.
+Arxitektura aşağıdakı qovluq sahibliyi matrisinə əsaslanır:
 
 | Yol | Owner | Məzmun |
 |---|---|---|

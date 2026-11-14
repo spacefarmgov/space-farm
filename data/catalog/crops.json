@@ -1,0 +1,288 @@
+{
+  "catalog_version": "crops-0.1.0",
+  "rules_version": "agronomy-rules-0.1.0",
+  "crops": [
+    {
+      "crop_id": "wheat",
+      "name": "Wheat",
+      "family": "Poaceae",
+      "season_windows": {
+        "planting_window": "Oct-Nov (winter) / Mar-Apr (spring)",
+        "harvest_window": "Jun-Jul",
+        "cycle_days_min": 120,
+        "cycle_days_max": 220,
+        "region_note": "Provisional FAO-generalized phenology; requires Azerbaijan regional cultivar verification."
+      },
+      "soil_ph_range": {
+        "min_ph": 5.5,
+        "max_ph": 8.0,
+        "optimal_min_ph": 6.0,
+        "optimal_max_ph": 7.5
+      },
+      "water_band_mm": {
+        "min_mm": 450.0,
+        "max_mm": 650.0,
+        "optimal_min_mm": 500.0,
+        "optimal_max_mm": 620.0
+      },
+      "predecessor_rules": {
+        "avoid_consecutive_same_crop": true,
+        "avoid_consecutive_same_family": false,
+        "nitrogen_contribution": "heavy_feeder",
+        "preferred_predecessor_families": ["Fabaceae", "Asteraceae"],
+        "disallowed_predecessor_crops": ["wheat"]
+      },
+      "objective_inputs": {
+        "water_efficiency_hint": 0.72,
+        "soil_health_contribution": 0.45,
+        "income_model_available": false,
+        "income_unavailable_reason": "no_verified_regional_price_cost_model"
+      },
+      "references": [
+        {
+          "rule_id": "RULE_FAO_WHEAT_WATER_PH",
+          "source_name": "FAO Irrigation & Drainage Paper 56 / Crop Water Needs",
+          "source_url": "https://www.fao.org/4/x0490e/x0490e00.htm",
+          "citation": "Allen et al. (1998) FAO-56 Table 12/22 & FAO Crop Water Needs (450-650 mm, pH 6.0-7.5 optimal, 5.5-8.0 range).",
+          "checked_at": "2026-11-14"
+        }
+      ],
+      "validation_status": "source_supported"
+    },
+    {
+      "crop_id": "barley",
+      "name": "Barley",
+      "family": "Poaceae",
+      "season_windows": {
+        "planting_window": "Oct-Nov (winter) / Mar (spring)",
+        "harvest_window": "May-Jun",
+        "cycle_days_min": 120,
+        "cycle_days_max": 150,
+        "region_note": "Provisional FAO-generalized phenology; requires Azerbaijan regional cultivar verification."
+      },
+      "soil_ph_range": {
+        "min_ph": 5.5,
+        "max_ph": 8.5,
+        "optimal_min_ph": 6.0,
+        "optimal_max_ph": 8.0
+      },
+      "water_band_mm": {
+        "min_mm": 450.0,
+        "max_mm": 650.0,
+        "optimal_min_mm": 460.0,
+        "optimal_max_mm": 600.0
+      },
+      "predecessor_rules": {
+        "avoid_consecutive_same_crop": true,
+        "avoid_consecutive_same_family": false,
+        "nitrogen_contribution": "neutral",
+        "preferred_predecessor_families": ["Fabaceae", "Asteraceae"],
+        "disallowed_predecessor_crops": ["barley"]
+      },
+      "objective_inputs": {
+        "water_efficiency_hint": 0.78,
+        "soil_health_contribution": 0.50,
+        "income_model_available": false,
+        "income_unavailable_reason": "no_verified_regional_price_cost_model"
+      },
+      "references": [
+        {
+          "rule_id": "RULE_FAO_BARLEY_WATER_PH",
+          "source_name": "FAO Irrigation & Drainage Paper 56 / Crop Water Needs",
+          "source_url": "https://www.fao.org/4/x0490e/x0490e00.htm",
+          "citation": "Allen et al. (1998) FAO-56 Table 12/22 & FAO Crop Water Needs (450-650 mm, pH 6.0-8.0 optimal, alkali tolerant).",
+          "checked_at": "2026-11-14"
+        }
+      ],
+      "validation_status": "source_supported"
+    },
+    {
+      "crop_id": "chickpea",
+      "name": "Chickpea",
+      "family": "Fabaceae",
+      "season_windows": {
+        "planting_window": "Mar-Apr (spring) / Nov (mild winter)",
+        "harvest_window": "Jul-Aug",
+        "cycle_days_min": 130,
+        "cycle_days_max": 170,
+        "region_note": "Provisional FAO-generalized phenology; requires Azerbaijan regional cultivar verification."
+      },
+      "soil_ph_range": {
+        "min_ph": 6.0,
+        "max_ph": 9.0,
+        "optimal_min_ph": 6.5,
+        "optimal_max_ph": 8.0
+      },
+      "water_band_mm": {
+        "min_mm": 200.0,
+        "max_mm": 550.0,
+        "optimal_min_mm": 300.0,
+        "optimal_max_mm": 480.0
+      },
+      "predecessor_rules": {
+        "avoid_consecutive_same_crop": true,
+        "avoid_consecutive_same_family": true,
+        "nitrogen_contribution": "fixes_nitrogen",
+        "preferred_predecessor_families": ["Poaceae"],
+        "disallowed_predecessor_crops": ["chickpea", "lentil"]
+      },
+      "objective_inputs": {
+        "water_efficiency_hint": 0.90,
+        "soil_health_contribution": 0.88,
+        "income_model_available": false,
+        "income_unavailable_reason": "no_verified_regional_price_cost_model"
+      },
+      "references": [
+        {
+          "rule_id": "RULE_FAO_CHICKPEA_WATER_PH",
+          "source_name": "FAO Irrigation & Drainage Paper 56 / CROPWAT",
+          "source_url": "https://www.fao.org/land-water/databases-and-software/cropwat/en/",
+          "citation": "FAO-56 & CROPWAT legume guidelines (200-500 mm dryland band, pH 6.0-9.0, symbiotic N fixation).",
+          "checked_at": "2026-11-14"
+        }
+      ],
+      "validation_status": "source_supported"
+    },
+    {
+      "crop_id": "lentil",
+      "name": "Lentil",
+      "family": "Fabaceae",
+      "season_windows": {
+        "planting_window": "Mar-Apr (spring) / Oct-Nov (winter)",
+        "harvest_window": "Jun-Jul",
+        "cycle_days_min": 130,
+        "cycle_days_max": 170,
+        "region_note": "Provisional FAO-generalized phenology; requires Azerbaijan regional cultivar verification."
+      },
+      "soil_ph_range": {
+        "min_ph": 6.0,
+        "max_ph": 8.2,
+        "optimal_min_ph": 6.2,
+        "optimal_max_ph": 7.8
+      },
+      "water_band_mm": {
+        "min_mm": 250.0,
+        "max_mm": 550.0,
+        "optimal_min_mm": 300.0,
+        "optimal_max_mm": 480.0
+      },
+      "predecessor_rules": {
+        "avoid_consecutive_same_crop": true,
+        "avoid_consecutive_same_family": true,
+        "nitrogen_contribution": "fixes_nitrogen",
+        "preferred_predecessor_families": ["Poaceae"],
+        "disallowed_predecessor_crops": ["lentil", "chickpea"]
+      },
+      "objective_inputs": {
+        "water_efficiency_hint": 0.86,
+        "soil_health_contribution": 0.85,
+        "income_model_available": false,
+        "income_unavailable_reason": "no_verified_regional_price_cost_model"
+      },
+      "references": [
+        {
+          "rule_id": "RULE_FAO_LENTIL_WATER_PH",
+          "source_name": "FAO Irrigation & Drainage Paper 56 / CROPWAT",
+          "source_url": "https://www.fao.org/land-water/databases-and-software/cropwat/en/",
+          "citation": "FAO-56 & CROPWAT pulse guidelines (300-500 mm typical, 250 mm dryland floor, pH 6.0-8.0).",
+          "checked_at": "2026-11-14"
+        }
+      ],
+      "validation_status": "source_supported"
+    },
+    {
+      "crop_id": "sunflower",
+      "name": "Sunflower",
+      "family": "Asteraceae",
+      "season_windows": {
+        "planting_window": "Apr-May",
+        "harvest_window": "Aug-Sep",
+        "cycle_days_min": 125,
+        "cycle_days_max": 140,
+        "region_note": "Provisional FAO-generalized phenology; requires Azerbaijan regional cultivar verification."
+      },
+      "soil_ph_range": {
+        "min_ph": 5.8,
+        "max_ph": 8.0,
+        "optimal_min_ph": 6.0,
+        "optimal_max_ph": 7.5
+      },
+      "water_band_mm": {
+        "min_mm": 600.0,
+        "max_mm": 1000.0,
+        "optimal_min_mm": 650.0,
+        "optimal_max_mm": 850.0
+      },
+      "predecessor_rules": {
+        "avoid_consecutive_same_crop": true,
+        "avoid_consecutive_same_family": true,
+        "nitrogen_contribution": "neutral",
+        "preferred_predecessor_families": ["Poaceae", "Fabaceae"],
+        "disallowed_predecessor_crops": ["sunflower"]
+      },
+      "objective_inputs": {
+        "water_efficiency_hint": 0.52,
+        "soil_health_contribution": 0.58,
+        "income_model_available": false,
+        "income_unavailable_reason": "no_verified_regional_price_cost_model"
+      },
+      "references": [
+        {
+          "rule_id": "RULE_FAO_SUNFLOWER_WATER_PH",
+          "source_name": "FAO Irrigation & Drainage Paper 56 / Crop Water Needs",
+          "source_url": "https://www.fao.org/4/x0490e/x0490e00.htm",
+          "citation": "Allen et al. (1998) FAO-56 Table 12/22 & FAO Crop Water Needs (600-1000 mm, pH 6.0-7.5 optimal).",
+          "checked_at": "2026-11-14"
+        }
+      ],
+      "validation_status": "provisional"
+    },
+    {
+      "crop_id": "maize",
+      "name": "Maize",
+      "family": "Poaceae",
+      "season_windows": {
+        "planting_window": "Apr-May",
+        "harvest_window": "Sep-Oct",
+        "cycle_days_min": 110,
+        "cycle_days_max": 180,
+        "region_note": "Provisional FAO-generalized phenology; requires Azerbaijan regional cultivar verification."
+      },
+      "soil_ph_range": {
+        "min_ph": 5.5,
+        "max_ph": 7.8,
+        "optimal_min_ph": 5.8,
+        "optimal_max_ph": 7.2
+      },
+      "water_band_mm": {
+        "min_mm": 500.0,
+        "max_mm": 800.0,
+        "optimal_min_mm": 580.0,
+        "optimal_max_mm": 760.0
+      },
+      "predecessor_rules": {
+        "avoid_consecutive_same_crop": true,
+        "avoid_consecutive_same_family": false,
+        "nitrogen_contribution": "heavy_feeder",
+        "preferred_predecessor_families": ["Fabaceae"],
+        "disallowed_predecessor_crops": ["maize"]
+      },
+      "objective_inputs": {
+        "water_efficiency_hint": 0.58,
+        "soil_health_contribution": 0.38,
+        "income_model_available": false,
+        "income_unavailable_reason": "no_verified_regional_price_cost_model"
+      },
+      "references": [
+        {
+          "rule_id": "RULE_FAO_MAIZE_WATER_PH",
+          "source_name": "FAO Irrigation & Drainage Paper 56 / Crop Water Needs",
+          "source_url": "https://www.fao.org/4/x0490e/x0490e00.htm",
+          "citation": "Allen et al. (1998) FAO-56 Table 12/22 & FAO Crop Water Needs (500-800 mm, pH 5.5-7.5).",
+          "checked_at": "2026-11-14"
+        }
+      ],
+      "validation_status": "source_supported"
+    }
+  ]
+}

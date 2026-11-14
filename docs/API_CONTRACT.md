@@ -1,6 +1,6 @@
 # API və data provider müqaviləsi — Space Farm (Team CODE44)
-Owner: B • contract_version: 0.1.0 • Status: DRAFT → B-01 zamanı FROZEN
-Bu, komandanın ilkin müqaviləsidir. Kod, OpenAPI və sintetik fixture-lər bootstrap zamanı B tərəfindən bu sənəddən hazırlanır. Sonra maşınla yoxlanan `contracts/openapi.json` və modellər bu sənədlə birlikdə saxlanır. Ziddiyyət varsa səssiz seçim deyil, B-yə CR verilir.
+Owner: B • contract_version: 0.1.0 • Status: FROZEN (`contracts/openapi.json` və 6 sintetik fixture yaradılıb)
+Bu, komandanın dondurulmuş `0.1.0` müqaviləsidir. OpenAPI sxemi (`contracts/openapi.json`), Pydantic modelləri (`services/api/app/schemas/models.py`) və sintetik fixture-lər (`contracts/fixtures/`) `tools/contracts/generate_contracts.py` ilə sinxron saxlanır. Ziddiyyət varsa səssiz seçim deyil, B-yə CR verilir.
 
 ## Ümumi qaydalar
 - URL prefix: `/api/v1`; JSON sahələri snake_case.

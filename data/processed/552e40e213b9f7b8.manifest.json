@@ -1,0 +1,68 @@
+{
+  "dataset_id": "nasa-power-2024-01-01-2024-12-31-22b70694bb78",
+  "query_hash": "552e40e213b9f7b8",
+  "provider": "NASA LaRC POWER",
+  "source_url": "https://power.larc.nasa.gov/docs/services/api/temporal/daily/",
+  "request_url": "https://power.larc.nasa.gov/api/temporal/daily/point?parameters=T2M%2CT2M_MIN%2CT2M_MAX%2CPRECTOTCORR&community=AG&longitude=46.36&latitude=40.68&start=20240101&end=20241231&format=JSON&time-standard=UTC",
+  "query": {
+    "latitude": 40.68,
+    "longitude": 46.36,
+    "start_date": "2024-01-01",
+    "end_date": "2024-12-31",
+    "community": "AG",
+    "time_standard": "UTC"
+  },
+  "retrieved_at": "2026-11-14T10:56:21.147087+00:00",
+  "observation_period": {
+    "start": "2024-01-01",
+    "end": "2024-12-31"
+  },
+  "parameters": [
+    "T2M",
+    "T2M_MIN",
+    "T2M_MAX",
+    "PRECTOTCORR"
+  ],
+  "units": {
+    "T2M": "C",
+    "T2M_MIN": "C",
+    "T2M_MAX": "C",
+    "PRECTOTCORR": "mm/day"
+  },
+  "time_standard": "UTC",
+  "spatial_resolution": {
+    "T2M": "0.5 x 0.625 deg (MERRA2 reanalysis grid; cell elevation 1313.31 m)",
+    "T2M_MIN": "0.5 x 0.625 deg (MERRA2 reanalysis grid; cell elevation 1313.31 m)",
+    "T2M_MAX": "0.5 x 0.625 deg (MERRA2 reanalysis grid; cell elevation 1313.31 m)",
+    "PRECTOTCORR": "0.5 x 0.625 deg (MERRA2 reanalysis grid; cell elevation 1313.31 m)"
+  },
+  "geometry": {
+    "type": "Point",
+    "coordinates": [
+      46.36,
+      40.68,
+      1313.31
+    ]
+  },
+  "raw_file": "data/raw/552e40e213b9f7b8.json",
+  "payload_sha256": "22b70694bb786042a84df2371af88ddca8b0485858b8ce51e20d1cb99474bf44",
+  "pipeline_version": "power-pipeline-0.1.0",
+  "valid_day_counts": {
+    "mean_temperature": 366,
+    "min_temperature": 366,
+    "max_temperature": 366,
+    "total_precipitation_mm": 366,
+    "frost_days_count": 366,
+    "wet_days_count": 366
+  },
+  "missing_day_counts": {
+    "mean_temperature": 0,
+    "min_temperature": 0,
+    "max_temperature": 0,
+    "total_precipitation_mm": 0,
+    "frost_days_count": 0,
+    "wet_days_count": 0
+  },
+  "quality_flags": [],
+  "redistribution_notes": "NASA LaRC POWER data is provided under NASA Earth Science open data / attribution terms, separate from Space Farm's MIT code license; attribution required without implying NASA endorsement."
+}

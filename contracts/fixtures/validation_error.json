@@ -1,0 +1,15 @@
+{
+  "synthetic": true,
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "preferences must sum to 1.0 (\u00b11e-6)",
+    "details": [
+      {
+        "field": "preferences",
+        "reason": "sum_mismatch"
+      }
+    ],
+    "retryable": false,
+    "request_id": "fixture-validation-error-001"
+  }
+}
