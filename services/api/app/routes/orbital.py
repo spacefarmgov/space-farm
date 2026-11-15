@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import math
+import re
 import time
+import unicodedata
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import parse_qs, unquote_plus, urljoin, urlparse
 
 import httpx
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 
 router = APIRouter(prefix="/api/orbital", tags=["orbital-telemetry"])
 
@@ -238,3 +241,397 @@ async def get_orbital_districts() -> dict[str, Any]:
         "count": len(AZ_DISTRICTS),
         "districts": list(AZ_DISTRICTS),
     }
+
+
+_GEOCODE_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+_GEOCODE_TTL_SECONDS = 900.0
+_GEOCODE_MAX_CACHE = 256
+_ALLOWED_GOOGLE_REDIRECT_HOSTS = {
+    "maps.app.goo.gl",
+    "goo.gl",
+    "g.co",
+    "www.google.com",
+    "maps.google.com",
+    "google.com",
+    "consent.google.com",
+}
+
+
+def _fold_search_text(text: str) -> str:
+    folded = (
+        text.replace("ə", "e")
+        .replace("Ə", "e")
+        .replace("ı", "i")
+        .replace("İ", "i")
+        .replace("ş", "s")
+        .replace("Ş", "s")
+        .replace("ç", "c")
+        .replace("Ç", "c")
+        .replace("ğ", "g")
+        .replace("Ğ", "g")
+        .replace("ö", "o")
+        .replace("Ö", "o")
+        .replace("ü", "u")
+        .replace("Ü", "u")
+    )
+    decomposed = unicodedata.normalize("NFKD", folded)
+    stripped = "".join(ch for ch in decomposed if not unicodedata.combining(ch))
+    return re.sub(r"\s+", " ", stripped).strip().lower()
+
+
+def _valid_lat_lon(lat: float, lon: float) -> bool:
+    return math.isfinite(lat) and math.isfinite(lon) and -90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0
+
+
+def _extract_place_label_from_maps_url(url_str: str) -> str | None:
+    match = re.search(r"/maps/(?:place|search)/([^/@?#]+)", url_str, flags=re.IGNORECASE)
+    if not match:
+        return None
+    label = unquote_plus(match.group(1)).strip()
+    if not label or re.match(r"^@-?\d", label):
+        return None
+    if re.match(r"^-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?$", label):
+        return None
+    return label
+
+
+def _parse_coords_from_map_url(url_str: str) -> tuple[float, float, str | None] | None:
+    label = _extract_place_label_from_maps_url(url_str)
+    parsed = urlparse(url_str)
+    host = parsed.netloc.lower()
+    is_yandex = "yandex." in host
+
+    pin_matches = re.findall(r"!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)", url_str)
+    if pin_matches:
+        lat_s, lon_s = pin_matches[-1]
+        lat, lon = float(lat_s), float(lon_s)
+        if _valid_lat_lon(lat, lon):
+            return round(lat, 6), round(lon, 6), label
+
+    if parsed.fragment:
+        osm_match = re.search(r"map=\d+(?:\.\d+)?/(-?\d+(?:\.\d+)?)/(-?\d+(?:\.\d+)?)", parsed.fragment)
+        if osm_match:
+            lat, lon = float(osm_match.group(1)), float(osm_match.group(2))
+            if _valid_lat_lon(lat, lon):
+                return round(lat, 6), round(lon, 6), label
+
+    qs = parse_qs(parsed.query)
+    if "mlat" in qs and "mlon" in qs:
+        try:
+            lat, lon = float(qs["mlat"][0]), float(qs["mlon"][0])
+            if _valid_lat_lon(lat, lon):
+                return round(lat, 6), round(lon, 6), label
+        except ValueError:
+            pass
+
+    for key in ("q", "query", "destination", "ll", "center", "sll", "pt"):
+        vals = qs.get(key)
+        if not vals:
+            continue
+        m = re.match(r"^\s*(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)(?:\s|$)", vals[0])
+        if m:
+            a, b = float(m.group(1)), float(m.group(2))
+            lat, lon = (b, a) if (is_yandex and key in {"ll", "pt"}) else (a, b)
+            if _valid_lat_lon(lat, lon):
+                return round(lat, 6), round(lon, 6), label
+
+    at_match = re.search(r"@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)(?:[,/]|$)", url_str)
+    if at_match:
+        lat, lon = float(at_match.group(1)), float(at_match.group(2))
+        if _valid_lat_lon(lat, lon):
+            return round(lat, 6), round(lon, 6), label
+
+    return None
+
+
+def _is_allowlisted_short_maps_url(raw_url: str) -> str | None:
+    candidate = raw_url.strip()
+    if re.match(r"^(?:maps\.app\.goo\.gl|goo\.gl/maps|g\.co/maps)/", candidate, flags=re.IGNORECASE):
+        candidate = f"https://{candidate}"
+    parsed = urlparse(candidate)
+    if parsed.scheme.lower() not in {"http", "https"}:
+        return None
+    host = parsed.netloc.lower()
+    if host == "maps.app.goo.gl":
+        return parsed._replace(scheme="https").geturl()
+    if host in {"goo.gl", "g.co"} and parsed.path.startswith("/maps"):
+        return parsed._replace(scheme="https").geturl()
+    return None
+
+
+async def _resolve_short_maps_url(short_url: str) -> tuple[str, tuple[float, float, str | None] | None]:
+    current_url = short_url
+    async with httpx.AsyncClient(
+        timeout=5.0,
+        follow_redirects=False,
+        headers={"User-Agent": "SpaceFarm-OrbitalGeocoder/1.0"},
+    ) as client:
+        for _ in range(5):
+            parsed = urlparse(current_url)
+            if parsed.scheme.lower() != "https" or parsed.netloc.lower() not in _ALLOWED_GOOGLE_REDIRECT_HOSTS:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Redirect target is outside the allowlisted Google Maps domains.",
+                )
+
+            if parsed.netloc.lower() == "consent.google.com":
+                qs = parse_qs(parsed.query)
+                cont = qs.get("continue", [None])[0]
+                if cont and cont.startswith("https://"):
+                    current_url = cont
+                    coords = _parse_coords_from_map_url(current_url)
+                    if coords:
+                        return current_url, coords
+                    continue
+
+            resp = await client.get(current_url)
+            if resp.is_redirect and "location" in resp.headers:
+                next_url = urljoin(current_url, resp.headers["location"])
+                next_parsed = urlparse(next_url)
+                if next_parsed.scheme.lower() == "http" and next_parsed.netloc.lower() in _ALLOWED_GOOGLE_REDIRECT_HOSTS:
+                    next_url = next_parsed._replace(scheme="https").geturl()
+                current_url = next_url
+                coords = _parse_coords_from_map_url(current_url)
+                if coords:
+                    return current_url, coords
+                continue
+
+            coords = _parse_coords_from_map_url(current_url)
+            if coords:
+                return current_url, coords
+
+            # Inspect only bounded snippet of final Google Maps HTML for embedded coords
+            if resp.status_code == 200 and parsed.netloc.lower() in {"www.google.com", "maps.google.com", "google.com"}:
+                snippet = resp.text[:65536]
+                coords = _parse_coords_from_map_url(snippet)
+                if coords:
+                    return current_url, coords
+            break
+
+    return current_url, _parse_coords_from_map_url(current_url)
+
+
+def _match_az_districts(query: str, limit: int = 5) -> list[dict[str, Any]]:
+    q_fold = _fold_search_text(query)
+    if len(q_fold) < 2:
+        return []
+
+    scored: list[tuple[int, dict[str, Any]]] = []
+    for d in AZ_DISTRICTS:
+        fields = [
+            _fold_search_text(d["name_en"]),
+            _fold_search_text(d["name_az"]),
+            _fold_search_text(d["id"]),
+            _fold_search_text(d["economic_region_en"]),
+            _fold_search_text(d["economic_region_az"]),
+        ]
+        best = 99
+        for idx, candidate in enumerate(fields):
+            if not candidate:
+                continue
+            if candidate == q_fold:
+                best = min(best, 0 if idx < 2 else 1)
+            elif candidate.startswith(q_fold):
+                best = min(best, 1 if idx < 2 else 2)
+            elif f" {q_fold}" in candidate or f"-{q_fold}" in candidate:
+                best = min(best, 2)
+            elif q_fold in candidate:
+                best = min(best, 3)
+
+        if best < 99:
+            scored.append(
+                (
+                    best,
+                    {
+                        "id": f"az:{d['id']}",
+                        "name": d["name_en"],
+                        "name_az": d["name_az"],
+                        "admin1": d["economic_region_en"],
+                        "admin1_az": d["economic_region_az"],
+                        "country": "Azerbaijan",
+                        "country_code": "AZ",
+                        "lat": float(d["latitude"]),
+                        "lon": float(d["longitude"]),
+                        "elevation_m": float(d["elevation_m"]),
+                        "population": None,
+                        "preset_id": d["id"],
+                        "source": "az_district",
+                    },
+                )
+            )
+
+    scored.sort(key=lambda pair: (pair[0], pair[1]["name"]))
+    return [item for _, item in scored[:limit]]
+
+
+async def _fetch_open_meteo_geocode(query: str, count: int = 6) -> tuple[list[dict[str, Any]], bool]:
+    async def _call(name_q: str) -> list[dict[str, Any]]:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(
+                "https://geocoding-api.open-meteo.com/v1/search",
+                params={"name": name_q, "count": count, "language": "en", "format": "json"},
+            )
+            resp.raise_for_status()
+            payload = resp.json()
+            return list(payload.get("results") or [])
+
+    try:
+        raw_hits = await _call(query)
+        if not raw_hits:
+            folded = _fold_search_text(query)
+            if folded and folded != query.strip().lower():
+                raw_hits = await _call(folded)
+    except Exception:
+        return [], False
+
+    mapped: list[dict[str, Any]] = []
+    for item in raw_hits:
+        lat = item.get("latitude")
+        lon = item.get("longitude")
+        if lat is None or lon is None:
+            continue
+        mapped.append(
+            {
+                "id": f"om:{item.get('id', f'{lat},{lon}')}",
+                "name": item.get("name"),
+                "name_az": None,
+                "admin1": item.get("admin1"),
+                "admin1_az": None,
+                "country": item.get("country"),
+                "country_code": item.get("country_code"),
+                "lat": float(lat),
+                "lon": float(lon),
+                "elevation_m": item.get("elevation"),
+                "population": item.get("population"),
+                "preset_id": None,
+                "source": "open_meteo",
+            }
+        )
+    return mapped, True
+
+
+@router.get("/geocode", summary="Search global locations or resolve allowlisted Google Maps share links")
+async def geocode_orbital_location(
+    q: str = Query(..., min_length=2, max_length=500),
+) -> dict[str, Any]:
+    raw_query = q.strip()
+    if len(raw_query) < 2:
+        raise HTTPException(status_code=400, detail="Query must be at least 2 characters.")
+
+    cache_key = raw_query.lower()
+    now = time.time()
+    cached = _GEOCODE_CACHE.get(cache_key)
+    if cached and (now - cached[0]) < _GEOCODE_TTL_SECONDS:
+        return {**cached[1], "source_status": "cached"}
+
+    short_maps_url = _is_allowlisted_short_maps_url(raw_query)
+    if short_maps_url:
+        try:
+            final_url, coords = await _resolve_short_maps_url(short_maps_url)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Could not expand Google Maps link: {exc}",
+            ) from exc
+
+        if coords:
+            lat, lon, label = coords
+            payload = {
+                "query": raw_query,
+                "kind": "resolved_link",
+                "resolved_url": final_url,
+                "source_status": "live",
+                "results": [
+                    {
+                        "id": f"link:{lat:.6f},{lon:.6f}",
+                        "name": label or "Google Maps Pin",
+                        "name_az": label or "Google Maps Nöqtəsi",
+                        "admin1": None,
+                        "admin1_az": None,
+                        "country": None,
+                        "country_code": None,
+                        "lat": lat,
+                        "lon": lon,
+                        "elevation_m": None,
+                        "population": None,
+                        "preset_id": None,
+                        "source": "google_maps_link",
+                    }
+                ],
+            }
+            if len(_GEOCODE_CACHE) >= _GEOCODE_MAX_CACHE:
+                _GEOCODE_CACHE.clear()
+            _GEOCODE_CACHE[cache_key] = (now, payload)
+            return payload
+
+        fallback_place = _extract_place_label_from_maps_url(final_url)
+        if fallback_place:
+            raw_query = fallback_place
+        else:
+            return {
+                "query": raw_query,
+                "kind": "empty",
+                "resolved_url": final_url,
+                "source_status": "live",
+                "results": [],
+            }
+
+    # Block arbitrary non-allowlisted http(s) URLs unless coordinates can be parsed locally
+    if re.match(r"^https?://", raw_query, flags=re.IGNORECASE):
+        coords = _parse_coords_from_map_url(raw_query)
+        if coords:
+            lat, lon, label = coords
+            return {
+                "query": raw_query,
+                "kind": "resolved_link",
+                "resolved_url": raw_query,
+                "source_status": "live",
+                "results": [
+                    {
+                        "id": f"link:{lat:.6f},{lon:.6f}",
+                        "name": label or "Map Coordinate Pin",
+                        "name_az": label or "Xəritə Koordinatı",
+                        "admin1": None,
+                        "admin1_az": None,
+                        "country": None,
+                        "country_code": None,
+                        "lat": lat,
+                        "lon": lon,
+                        "elevation_m": None,
+                        "population": None,
+                        "preset_id": None,
+                        "source": "google_maps_link",
+                    }
+                ],
+            }
+        place_from_url = _extract_place_label_from_maps_url(raw_query)
+        if place_from_url:
+            raw_query = place_from_url
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="Only allowlisted Google Maps share links or map URLs with coordinates are accepted.",
+            )
+
+    az_hits = _match_az_districts(raw_query, limit=5)
+    om_hits, om_ok = await _fetch_open_meteo_geocode(raw_query, count=6)
+
+    merged: list[dict[str, Any]] = list(az_hits)
+    for hit in om_hits:
+        if any(math.hypot(existing["lat"] - hit["lat"], existing["lon"] - hit["lon"]) < 0.08 for existing in merged):
+            continue
+        merged.append(hit)
+
+    payload = {
+        "query": raw_query,
+        "kind": "results" if merged else "empty",
+        "source_status": "live" if om_ok else "local_only",
+        "results": merged[:8],
+    }
+    if len(_GEOCODE_CACHE) >= _GEOCODE_MAX_CACHE:
+        _GEOCODE_CACHE.clear()
+    _GEOCODE_CACHE[cache_key] = (now, payload)
+    return payload
+

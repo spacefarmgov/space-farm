@@ -519,9 +519,9 @@ export const EarthSatelliteCanvas: React.FC<EarthSatelliteCanvasProps> = ({
   }>({});
 
   // Trigger camera glide when preset/coordinates change in Orbit mode
-  const prevCoordRef = useRef(`${selectedLat.toFixed(2)},${selectedLon.toFixed(2)}`);
+  const prevCoordRef = useRef(`${selectedLat.toFixed(4)},${selectedLon.toFixed(4)}`);
   useEffect(() => {
-    const key = `${selectedLat.toFixed(2)},${selectedLon.toFixed(2)}`;
+    const key = `${selectedLat.toFixed(4)},${selectedLon.toFixed(4)}`;
     if (key !== prevCoordRef.current) {
       prevCoordRef.current = key;
       const { camera } = sceneObjectsRef.current;

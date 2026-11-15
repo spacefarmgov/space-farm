@@ -996,4 +996,103 @@ class WorkspaceApiTests(unittest.TestCase):
                     self.assertEqual(prof_resp.status_code, 200, prof_resp.text)
                     self.assertEqual(prof_resp.json()["user"]["email"], body_a["user"]["email"])
 
+    def test_orbital_geocode_az_districts_global_mock_short_link_and_ssrf_guard(self) -> None:
+        from unittest.mock import AsyncMock, patch
+        import httpx
+        from app.routes import orbital as orbital_routes
+
+        orbital_routes._GEOCODE_CACHE.clear()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store = SpaceFarmStore(Settings(data_dir=tmp))
+            app = create_app()
+            app.dependency_overrides[_get_store] = lambda: store
+            with TestClient(app) as client:
+                # 1. Local Azerbaijan district search (works even when external geocoder fails)
+                with patch(
+                    "app.routes.orbital._fetch_open_meteo_geocode",
+                    new=AsyncMock(return_value=([], False)),
+                ):
+                    az_resp = client.get("/api/orbital/geocode", params={"q": "Şəki"})
+                    self.assertEqual(az_resp.status_code, 200, az_resp.text)
+                    az_body = az_resp.json()
+                    self.assertEqual(az_body["source_status"], "local_only")
+                    self.assertTrue(any(r["preset_id"] == "shaki" for r in az_body["results"]))
+
+                # 2. Global Open-Meteo geocode mapping + caching
+                mock_global = [
+                    {
+                        "id": "om:1850147",
+                        "name": "Tokyo",
+                        "name_az": None,
+                        "admin1": "Tokyo",
+                        "admin1_az": None,
+                        "country": "Japan",
+                        "country_code": "JP",
+                        "lat": 35.6895,
+                        "lon": 139.6917,
+                        "elevation_m": 44.0,
+                        "population": 9733276,
+                        "preset_id": None,
+                        "source": "open_meteo",
+                    }
+                ]
+                with patch(
+                    "app.routes.orbital._fetch_open_meteo_geocode",
+                    new=AsyncMock(return_value=(mock_global, True)),
+                ):
+                    gl_resp = client.get("/api/orbital/geocode", params={"q": "Tokyo"})
+                    self.assertEqual(gl_resp.status_code, 200, gl_resp.text)
+                    gl_body = gl_resp.json()
+                    self.assertEqual(gl_body["kind"], "results")
+                    self.assertEqual(gl_body["results"][0]["name"], "Tokyo")
+                    self.assertAlmostEqual(gl_body["results"][0]["lat"], 35.6895, places=4)
+
+                # 3. Allowlisted short Google Maps link expansion (prefers !3d!4d pin over @ viewport)
+                redirect_resp = httpx.Response(
+                    302,
+                    headers={
+                        "location": "https://www.google.com/maps/place/Fresno+CA/@36.70,-119.80,11z/data=!3m1!4b1!4m6!3m5!1s0x0:0x0!8m2!3d36.7378!4d-119.7871"
+                    },
+                )
+
+                class _MockAsyncClient:
+                    def __init__(self, *args, **kwargs):
+                        pass
+
+                    async def __aenter__(self):
+                        return self
+
+                    async def __aexit__(self, exc_type, exc, tb):
+                        return False
+
+                    async def get(self, url: str):
+                        return redirect_resp
+
+                with patch("app.routes.orbital.httpx.AsyncClient", _MockAsyncClient):
+                    short_resp = client.get(
+                        "/api/orbital/geocode",
+                        params={"q": "https://maps.app.goo.gl/TestFarmPin"},
+                    )
+                    self.assertEqual(short_resp.status_code, 200, short_resp.text)
+                    short_body = short_resp.json()
+                    self.assertEqual(short_body["kind"], "resolved_link")
+                    self.assertEqual(short_body["results"][0]["source"], "google_maps_link")
+                    self.assertAlmostEqual(short_body["results"][0]["lat"], 36.7378, places=4)
+                    self.assertAlmostEqual(short_body["results"][0]["lon"], -119.7871, places=4)
+
+                # 4. SSRF block on arbitrary non-allowlisted http/https URLs
+                ssrf_resp = client.get(
+                    "/api/orbital/geocode",
+                    params={"q": "http://127.0.0.1:8000/internal-admin"},
+                )
+                self.assertEqual(ssrf_resp.status_code, 400, ssrf_resp.text)
+
+                evil_resp = client.get(
+                    "/api/orbital/geocode",
+                    params={"q": "https://evil.example.com/redirect"},
+                )
+                self.assertEqual(evil_resp.status_code, 400, evil_resp.text)
+
+
 

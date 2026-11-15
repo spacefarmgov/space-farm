@@ -2,6 +2,11 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { EarthSatelliteCanvas } from "./components/EarthSatelliteCanvas";
 import { SatelliteFieldMap } from "./components/SatelliteFieldMap";
 import {
+  LocationSearchControl,
+  type LocationSearchSelection,
+} from "../../components/map/LocationSearchControl";
+import { formatLatLon } from "../../utils/locationSearch";
+import {
   buildParcelAroundPoint,
   computeGeodesicAreaHa,
   DEFAULT_NASA_SATELLITE_TLES,
@@ -146,8 +151,8 @@ export const OrbitalEarthModule: React.FC<OrbitalEarthModuleProps> = ({
     }
     if (customLabel) return customLabel;
     return language === "az"
-      ? `Sektor (${selectedLat.toFixed(2)}°N, ${selectedLon.toFixed(2)}°E)`
-      : `Sector (${selectedLat.toFixed(2)}°N, ${selectedLon.toFixed(2)}°E)`;
+      ? `Sektor (${formatLatLon(selectedLat, selectedLon, 2)})`
+      : `Sector (${formatLatLon(selectedLat, selectedLon, 2)})`;
   }, [customLabel, activePreset, selectedPresetId, language, selectedLat, selectedLon]);
 
   // Fetch live TLEs + Global Real Wind/Temperature Grid once on mount
@@ -207,21 +212,45 @@ export const OrbitalEarthModule: React.FC<OrbitalEarthModuleProps> = ({
   );
 
   const handleSelectLocation = useCallback(
-    (lat: number, lon: number, presetId: string | null, labelOverride?: string) => {
+    (
+      lat: number,
+      lon: number,
+      presetId: string | null,
+      labelOverride?: string,
+      options?: { exactCoords?: boolean }
+    ) => {
+      const preserveExact = Boolean(options?.exactCoords);
       const matched = presetId
         ? ORBITAL_PRESETS.find((p) => p.id === presetId) ?? null
-        : matchNearestPreset(lat, lon) ?? null;
-      const matchedDistrict = !matched ? matchNearestAzDistrict(lat, lon) : null;
+        : preserveExact
+          ? null
+          : matchNearestPreset(lat, lon) ?? null;
+      const matchedDistrict =
+        !matched && !preserveExact ? matchNearestAzDistrict(lat, lon) : null;
 
       const resolvedPresetId = matched?.id ?? presetId ?? matchedDistrict?.id ?? null;
-      const resolvedLat =
-        matched && presetId ? matched.lat : matchedDistrict ? matchedDistrict.lat : lat;
-      const resolvedLon =
-        matched && presetId ? matched.lon : matchedDistrict ? matchedDistrict.lon : lon;
-      const nextPoly = matched
-        ? matched.polygon
-        : buildParcelAroundPoint(resolvedLat, resolvedLon);
-      const nextHa = matched ? matched.defaultAreaHa : computeGeodesicAreaHa(nextPoly);
+      const resolvedLat = preserveExact
+        ? lat
+        : matched && presetId
+          ? matched.lat
+          : matchedDistrict
+            ? matchedDistrict.lat
+            : lat;
+      const resolvedLon = preserveExact
+        ? lon
+        : matched && presetId
+          ? matched.lon
+          : matchedDistrict
+            ? matchedDistrict.lon
+            : lon;
+      const nextPoly =
+        matched && !preserveExact
+          ? matched.polygon
+          : buildParcelAroundPoint(resolvedLat, resolvedLon);
+      const nextHa =
+        matched && !preserveExact
+          ? matched.defaultAreaHa
+          : computeGeodesicAreaHa(nextPoly);
       const nextLabel =
         labelOverride ??
         (matched
@@ -232,18 +261,30 @@ export const OrbitalEarthModule: React.FC<OrbitalEarthModuleProps> = ({
             ? language === "az"
               ? `${matchedDistrict.nameAz} (${matchedDistrict.economicRegionAz})`
               : `${matchedDistrict.nameEn} (${matchedDistrict.economicRegionEn})`
-            : `${resolvedLat.toFixed(3)}°N, ${resolvedLon.toFixed(3)}°E`);
+            : formatLatLon(resolvedLat, resolvedLon, 3));
 
       setSelectedLat(resolvedLat);
       setSelectedLon(resolvedLon);
       setSelectedPresetId(resolvedPresetId);
-      setCustomLabel(matched ? null : (labelOverride ?? nextLabel));
+      setCustomLabel(matched && !labelOverride ? null : (labelOverride ?? nextLabel));
       setPolygon(nextPoly);
       setAreaHa(nextHa);
 
       emitSelection(resolvedLat, resolvedLon, nextLabel, resolvedPresetId, nextPoly, nextHa, filterMode);
     },
     [language, filterMode, emitSelection]
+  );
+
+  const handleSearchSelect = useCallback(
+    (sel: LocationSearchSelection) => {
+      handleSelectLocation(sel.lat, sel.lon, sel.presetId ?? null, sel.label, {
+        exactCoords: sel.exactCoords ?? sel.source !== "az_district",
+      });
+      if (stageMode === "globe" && cameraMode !== "orbit") {
+        setCameraMode("orbit");
+      }
+    },
+    [handleSelectLocation, stageMode, cameraMode]
   );
 
   const handleRequestDive = useCallback(
@@ -435,7 +476,7 @@ export const OrbitalEarthModule: React.FC<OrbitalEarthModuleProps> = ({
                 ALT: {String(diveAltitudeKm).padStart(4, "0")} KM
               </div>
               <div className="sf-dive-target">
-                {locationLabel} • {selectedLat.toFixed(3)}°N {selectedLon.toFixed(3)}°E
+                {locationLabel} • {formatLatLon(selectedLat, selectedLon, 3)}
               </div>
             </div>
             <div
@@ -447,69 +488,25 @@ export const OrbitalEarthModule: React.FC<OrbitalEarthModuleProps> = ({
           </div>
         )}
 
-        {/* Top Floating Aerospace Header & Quick Region Switcher */}
+        {/* Top Floating Aerospace Header, Global Search & Quick Region Switcher */}
         <header className="sf-hud-topbar">
-          <div className="sf-brand-pill">
-            <span className="sf-brand-orb" />
-            <div>
-              <strong>SPACEFARM // CODE44</strong>
-              <span>{isAz ? "Orbital Kəşfiyyat Modulu" : "Orbital Earth Reconnaissance"}</span>
+          <div className="sf-hud-topbar-row">
+            <div className="sf-brand-pill">
+              <span className="sf-brand-orb" />
+              <div>
+                <strong>SPACEFARM // CODE44</strong>
+                <span>{isAz ? "Orbital Kəşfiyyat Modulu" : "Orbital Earth Reconnaissance"}</span>
+              </div>
             </div>
-          </div>
 
-          <nav className="sf-preset-strip" aria-label={isAz ? "Hazır sahələr" : "Preset sectors"}>
-            {ORBITAL_PRESETS.map((preset) => (
-              <button
-                key={preset.id}
-                type="button"
-                className={`sf-preset-chip ${selectedPresetId === preset.id ? "is-active" : ""}`}
-                onClick={() => handleSelectLocation(preset.lat, preset.lon, preset.id)}
-                onDoubleClick={() => handleRequestDive(preset.lat, preset.lon, preset.id)}
-                title={isAz ? "Əsas Bölgə ★ • Seçmək üçün 1× • Xəritəyə enmək üçün 2× klik" : "Primary Region ★ • 1× Target • 2× Dive"}
-              >
-                ★ {(isAz ? preset.nameAz : preset.nameEn).split(/[\s—/-]+/)[0]}
-              </button>
-            ))}
-            <select
-              className="sf-district-select"
-              aria-label={isAz ? "Bütün 67 rayon" : "All 67 districts"}
-              value={selectedPresetId ?? ""}
-              onChange={(e) => {
-                const id = e.target.value;
-                if (!id) return;
-                const primary = ORBITAL_PRESETS.find((p) => p.id === id);
-                if (primary) {
-                  handleSelectLocation(primary.lat, primary.lon, primary.id);
-                  return;
-                }
-                const dist = findAzDistrict(id);
-                if (dist) {
-                  const lbl = isAz
-                    ? `${dist.nameAz} (${dist.economicRegionAz})`
-                    : `${dist.nameEn} (${dist.economicRegionEn})`;
-                  handleSelectLocation(dist.lat, dist.lon, dist.id, lbl);
-                }
-              }}
-            >
-              <option value="">{isAz ? "67 Rayon…" : "67 Districts…"}</option>
-              <optgroup label={isAz ? "★ Əsas Bölgələr (4)" : "★ Primary Regions (4)"}>
-                {ORBITAL_PRESETS.map((preset) => (
-                  <option key={preset.id} value={preset.id}>
-                    ★ {isAz ? preset.nameAz : preset.nameEn}
-                  </option>
-                ))}
-              </optgroup>
-              <optgroup label={isAz ? `Bütün ${AZ_DISTRICTS.length} Rayon (A–Z)` : `All ${AZ_DISTRICTS.length} Districts (A–Z)`}>
-                {AZ_DISTRICTS.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {isAz ? `${d.nameAz} · ${d.elevationM.toFixed(0)}m` : `${d.nameEn} · ${d.elevationM.toFixed(0)}m`}
-                  </option>
-                ))}
-              </optgroup>
-            </select>
-          </nav>
+            <LocationSearchControl
+              language={language}
+              apiBaseUrl={apiBaseUrl}
+              variant="hud"
+              onSelectLocation={handleSearchSelect}
+            />
 
-          <div className="sf-hud-controls-right">
+            <div className="sf-hud-controls-right">
             {/* Spacecraft Selection (NASA TERRA / LANDSAT 8 Real 3D .glb + TLE) */}
             <div className="sf-segmented-pill" role="group" aria-label="NASA Spacecraft">
               {(["terra", "landsat8"] as ActiveSatelliteId[]).map((id) => (
@@ -554,6 +551,61 @@ export const OrbitalEarthModule: React.FC<OrbitalEarthModuleProps> = ({
             >
               {language.toUpperCase()}
             </button>
+          </div>
+          </div>
+
+          <div className="sf-hud-subbar">
+            <nav className="sf-preset-strip" aria-label={isAz ? "Hazır sahələr" : "Preset sectors"}>
+              {ORBITAL_PRESETS.map((preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  className={`sf-preset-chip ${selectedPresetId === preset.id ? "is-active" : ""}`}
+                  onClick={() => handleSelectLocation(preset.lat, preset.lon, preset.id)}
+                  onDoubleClick={() => handleRequestDive(preset.lat, preset.lon, preset.id)}
+                  title={isAz ? "Əsas Bölgə ★ • Seçmək üçün 1× • Xəritəyə enmək üçün 2× klik" : "Primary Region ★ • 1× Target • 2× Dive"}
+                >
+                  ★ {(isAz ? preset.nameAz : preset.nameEn).split(/[\s—/-]+/)[0]}
+                </button>
+              ))}
+              <select
+                className="sf-district-select"
+                aria-label={isAz ? "Bütün 67 rayon" : "All 67 districts"}
+                value={selectedPresetId ?? ""}
+                onChange={(e) => {
+                  const id = e.target.value;
+                  if (!id) return;
+                  const primary = ORBITAL_PRESETS.find((p) => p.id === id);
+                  if (primary) {
+                    handleSelectLocation(primary.lat, primary.lon, primary.id);
+                    return;
+                  }
+                  const dist = findAzDistrict(id);
+                  if (dist) {
+                    const lbl = isAz
+                      ? `${dist.nameAz} (${dist.economicRegionAz})`
+                      : `${dist.nameEn} (${dist.economicRegionEn})`;
+                    handleSelectLocation(dist.lat, dist.lon, dist.id, lbl);
+                  }
+                }}
+              >
+                <option value="">{isAz ? "67 Rayon…" : "67 Districts…"}</option>
+                <optgroup label={isAz ? "★ Əsas Bölgələr (4)" : "★ Primary Regions (4)"}>
+                  {ORBITAL_PRESETS.map((preset) => (
+                    <option key={preset.id} value={preset.id}>
+                      ★ {isAz ? preset.nameAz : preset.nameEn}
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label={isAz ? `Bütün ${AZ_DISTRICTS.length} Rayon (A–Z)` : `All ${AZ_DISTRICTS.length} Districts (A–Z)`}>
+                  {AZ_DISTRICTS.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {isAz ? `${d.nameAz} · ${d.elevationM.toFixed(0)}m` : `${d.nameEn} · ${d.elevationM.toFixed(0)}m`}
+                    </option>
+                  ))}
+                </optgroup>
+              </select>
+            </nav>
           </div>
         </header>
 
@@ -617,7 +669,7 @@ export const OrbitalEarthModule: React.FC<OrbitalEarthModuleProps> = ({
               </span>
               <h2>{locationLabel}</h2>
               <p className="sf-coord-mono">
-                {selectedLat.toFixed(4)}°N • {selectedLon.toFixed(4)}°E • {areaHa.toFixed(1)} ha
+                {formatLatLon(selectedLat, selectedLon, 4)} • {areaHa.toFixed(1)} ha
               </p>
             </div>
             <button
@@ -781,9 +833,13 @@ export const OrbitalEarthModule: React.FC<OrbitalEarthModuleProps> = ({
           climate={climate}
           windGrid={windGrid}
           language={language}
+          apiBaseUrl={apiBaseUrl}
           isVisible={stageMode === "map"}
           onReturnToGlobe={handleReturnToGlobe}
-          onSelectLocation={(lat, lon) => handleSelectLocation(lat, lon, null)}
+          onSelectLocation={(lat, lon) =>
+            handleSelectLocation(lat, lon, null, undefined, { exactCoords: true })
+          }
+          onSelectSearchResult={handleSearchSelect}
           onPolygonChange={handlePolygonChange}
           onFilterChange={handleFilterChange}
           onProceed={

@@ -4,6 +4,11 @@ import { buildParcelAroundPoint, computeGeodesicAreaHa, SATELLITE_FILTERS } from
 import { AZ_DISTRICTS } from "../../../data/azDistricts";
 import { getMerra2CellBounds, VERIFIED_AZ_REGIONS } from "../../../data/regions";
 import { sampleWindField } from "../services/realTelemetry";
+import {
+  LocationSearchControl,
+  type LocationSearchSelection,
+} from "../../../components/map/LocationSearchControl";
+import { formatLatLon } from "../../../utils/locationSearch";
 import type {
   LiveClimateSnapshot,
   RealWeatherSnapshot,
@@ -22,9 +27,11 @@ export interface SatelliteFieldMapProps {
   climate: LiveClimateSnapshot;
   windGrid: RealWindGridPoint[];
   language: "en" | "az";
+  apiBaseUrl?: string;
   isVisible: boolean;
   onReturnToGlobe: () => void;
   onSelectLocation: (lat: number, lon: number) => void;
+  onSelectSearchResult?: (selection: LocationSearchSelection) => void;
   onPolygonChange: (polygon: Array<[number, number]>, areaHa: number) => void;
   onFilterChange: (mode: SatelliteFilterMode) => void;
   onProceed?: () => void;
@@ -60,9 +67,11 @@ export const SatelliteFieldMap: React.FC<SatelliteFieldMapProps> = ({
   climate,
   windGrid,
   language,
+  apiBaseUrl,
   isVisible,
   onReturnToGlobe,
   onSelectLocation,
+  onSelectSearchResult,
   onPolygonChange,
   onFilterChange,
   onProceed,
@@ -550,9 +559,24 @@ export const SatelliteFieldMap: React.FC<SatelliteFieldMapProps> = ({
             <span className="sf-live-dot" />
             <strong>{locationLabel}</strong>
             <span className="sf-mono-dim">
-              {selectedLat.toFixed(4)}°N, {selectedLon.toFixed(4)}°E
+              {formatLatLon(selectedLat, selectedLon, 4)}
             </span>
           </div>
+
+          <LocationSearchControl
+            language={language}
+            apiBaseUrl={apiBaseUrl}
+            variant="hud"
+            className="sf-loc-search--map"
+            onSelectLocation={(sel) => {
+              setOverviewMode(false);
+              if (onSelectSearchResult) {
+                onSelectSearchResult(sel);
+              } else {
+                onSelectLocation(sel.lat, sel.lon);
+              }
+            }}
+          />
         </div>
 
         <div className="sf-map-filter-strip" role="group" aria-label="Satellite spectral layers">

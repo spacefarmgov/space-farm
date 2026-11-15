@@ -4277,3 +4277,289 @@ textarea:focus-visible,
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* ================================================================
+   GLOBAL LOCATION, COORDINATE & MAPS-LINK SEARCH CONTROL
+   ================================================================ */
+.sf-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.sf-loc-search {
+  position: relative;
+  width: 100%;
+  z-index: 60;
+}
+
+.sf-loc-search--hud {
+  flex: 1 1 280px;
+  max-width: 440px;
+  min-width: 230px;
+}
+
+.sf-loc-search--map {
+  flex: 0 1 320px;
+  min-width: 220px;
+  max-width: 360px;
+}
+
+.sf-loc-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 6px 5px 11px;
+  border-radius: 12px;
+  border: 1px solid rgba(168, 85, 247, 0.34);
+  background: rgba(11, 12, 26, 0.84);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.38);
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.sf-loc-search-bar:focus-within {
+  border-color: rgba(192, 132, 252, 0.8);
+  box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.2), 0 12px 28px rgba(0, 0, 0, 0.48);
+}
+
+.sf-loc-search--panel .sf-loc-search-bar {
+  background: var(--bg-input, rgba(15, 23, 42, 0.72));
+  border: 1px solid var(--border-default, rgba(148, 163, 184, 0.24));
+  box-shadow: none;
+  padding: 6px 6px 6px 10px;
+  border-radius: 10px;
+}
+
+.sf-loc-search--panel .sf-loc-search-bar:focus-within {
+  border-color: var(--accent-cyan, #22d3ee);
+  box-shadow: 0 0 0 2px rgba(34, 211, 238, 0.16);
+}
+
+.sf-loc-search-icon {
+  flex-shrink: 0;
+  color: #c084fc;
+}
+
+.sf-loc-search--panel .sf-loc-search-icon {
+  color: var(--accent-cyan, #22d3ee);
+}
+
+.sf-loc-search-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: #f8fafc;
+  font-size: 12.5px;
+  line-height: 1.4;
+  outline: none;
+}
+
+.sf-loc-search--panel .sf-loc-search-input {
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.sf-loc-search-input::placeholder {
+  color: rgba(203, 213, 225, 0.64);
+}
+
+.sf-loc-search--panel .sf-loc-search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.sf-loc-search-spinner {
+  flex-shrink: 0;
+  color: #c084fc;
+  animation: sfSpin 0.9s linear infinite;
+}
+
+@keyframes sfSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.sf-loc-search-clear {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: none;
+  background: rgba(148, 163, 184, 0.16);
+  color: #cbd5e1;
+  cursor: pointer;
+}
+
+.sf-loc-search-clear:hover {
+  background: rgba(148, 163, 184, 0.28);
+  color: #ffffff;
+}
+
+.sf-loc-search-go {
+  flex-shrink: 0;
+  border: 1px solid rgba(216, 180, 254, 0.42);
+  background: linear-gradient(135deg, rgba(147, 51, 234, 0.82), rgba(109, 40, 217, 0.85));
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 5px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: filter 0.15s ease;
+}
+
+.sf-loc-search-go:hover {
+  filter: brightness(1.12);
+}
+
+.sf-loc-search-note {
+  position: absolute;
+  top: calc(100% + 5px);
+  left: 0;
+  right: 0;
+  padding: 6px 10px;
+  border-radius: 9px;
+  font-size: 11.5px;
+  line-height: 1.35;
+  backdrop-filter: blur(14px);
+  pointer-events: none;
+  z-index: 65;
+}
+
+.sf-loc-search--panel .sf-loc-search-note {
+  position: static;
+  margin-top: 6px;
+}
+
+.sf-loc-search-note.is-ok {
+  background: rgba(6, 78, 59, 0.9);
+  border: 1px solid rgba(52, 211, 153, 0.45);
+  color: #d1fae5;
+}
+
+.sf-loc-search-note.is-error {
+  background: rgba(127, 29, 29, 0.92);
+  border: 1px solid rgba(248, 113, 113, 0.52);
+  color: #fee2e2;
+}
+
+.sf-loc-search-note.is-info {
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid rgba(148, 163, 184, 0.36);
+  color: #e2e8f0;
+}
+
+.sf-loc-search-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 5px;
+  list-style: none;
+  border-radius: 12px;
+  background: rgba(10, 11, 24, 0.96);
+  border: 1px solid rgba(192, 132, 252, 0.45);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.65);
+  max-height: 290px;
+  overflow-y: auto;
+  z-index: 80;
+}
+
+.sf-loc-search-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 9px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #f8fafc;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.14s ease;
+}
+
+.sf-loc-search-item:hover,
+.sf-loc-search-item.is-active {
+  background: rgba(147, 51, 234, 0.24);
+}
+
+.sf-loc-item-icon {
+  flex-shrink: 0;
+  color: #67e8f9;
+}
+
+.sf-loc-item-icon.is-pin {
+  color: #c084fc;
+}
+
+.sf-loc-item-icon.is-az {
+  color: #4ade80;
+}
+
+.sf-loc-item-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.sf-loc-item-body strong {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #f8fafc;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sf-loc-item-body span {
+  font-size: 11px;
+  color: #94a3b8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sf-loc-item-badge {
+  flex-shrink: 0;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: rgba(148, 163, 184, 0.14);
+  color: #cbd5e1;
+}
+
+:root[data-theme="light"] .sf-loc-search--panel .sf-loc-search-dropdown {
+  background: #ffffff;
+  border-color: var(--border-default);
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.14);
+}
+
+:root[data-theme="light"] .sf-loc-search--panel .sf-loc-search-item,
+:root[data-theme="light"] .sf-loc-search--panel .sf-loc-item-body strong {
+  color: #0f172a;
+}
+
+:root[data-theme="light"] .sf-loc-search--panel .sf-loc-search-item:hover,
+:root[data-theme="light"] .sf-loc-search--panel .sf-loc-search-item.is-active {
+  background: rgba(124, 58, 237, 0.08);
+}

@@ -4,6 +4,7 @@ import { ArrowRight, CheckCircle2, Compass, Edit3, FlaskConical, Layers3, Mounta
 import { fetchOrbitalElevation } from "../api/extendedClient";
 import type { IrrigationType, SoilSourceType, SoilTexture } from "../api/types";
 import { AppShell } from "../components/layout/AppShell";
+import { LocationSearchControl } from "../components/map/LocationSearchControl";
 import { SatelliteFieldMap } from "../components/map/SatelliteFieldMap";
 import { useSpaceFarm } from "../context/SpaceFarmContext";
 import { VERIFIED_AZ_REGIONS } from "../data/regions";
@@ -159,6 +160,30 @@ export function FieldIntelligencePage() {
                   <Edit3 size={13} aria-hidden="true" />
                   <span>{t.actions.editLocation}</span>
                 </button>
+              </div>
+
+              <div className="sf-field">
+                <span className="sf-label-row">
+                  <span>
+                    {locale === "az"
+                      ? "Qlobal Axtarış / Koordinat / Maps Linki"
+                      : "Global Search / Coords / Maps Link"}
+                  </span>
+                  <span className="mono" style={{ fontSize: 11, color: "var(--accent-cyan)" }}>
+                    GPS · URL
+                  </span>
+                </span>
+                <LocationSearchControl
+                  language={locale}
+                  variant="panel"
+                  onSelectLocation={(sel) => {
+                    if (sel.source === "az_district" && sel.presetId) {
+                      selectRegion(sel.presetId);
+                    } else {
+                      setCustomCoordinates(sel.lat, sel.lon, sel.label);
+                    }
+                  }}
+                />
               </div>
 
               <label className="sf-field">
