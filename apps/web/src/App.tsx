@@ -1,5 +1,5 @@
-import { Component, Suspense, lazy, useEffect, type ErrorInfo, type ReactNode } from "react";
-import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { Component, Suspense, lazy, useEffect, useRef, useState, type ErrorInfo, type ReactNode } from "react";
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { SpaceFarmProvider, useSpaceFarm } from "./context/SpaceFarmContext";
 import {
   SpaceFarmBootCurtain,
@@ -105,29 +105,70 @@ function ScrollToTopOnNavigate() {
 }
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
-  const { user, t, triggerAuthAlert } = useSpaceFarm();
-  const location = useLocation();
+  const { user, t, loginAsDemoJudge } = useSpaceFarm();
+  const navigate = useNavigate();
+  const bootRequestedRef = useRef(false);
+  const [bootError, setBootError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!user) {
-      triggerAuthAlert(location.pathname || "/explore");
-    }
-  }, [user, location.pathname, triggerAuthAlert]);
+    if (user || bootRequestedRef.current) return;
+    bootRequestedRef.current = true;
+    void loginAsDemoJudge().then((res) => {
+      if (!res.ok) {
+        setBootError(res.error ?? t.errors.apiUnreachableTitle);
+      }
+    });
+  }, [user, loginAsDemoJudge, t.errors.apiUnreachableTitle]);
 
-  if (!user) {
+  if (user) {
+    return <>{children}</>;
+  }
+
+  if (bootError) {
     return (
-      <Navigate
-        to="/login"
-        replace
-        state={{
-          alertMessage: t.auth.alertRequiredBody,
-          redirectTo: location.pathname || "/explore",
+      <div
+        style={{
+          minHeight: "100vh",
+          display: "grid",
+          placeItems: "center",
+          padding: 24,
+          background: "var(--bg-void, #05050b)",
+          color: "var(--text-primary, #f6f5fb)",
         }}
-      />
+      >
+        <div className="sf-panel" style={{ maxWidth: 460, textAlign: "center" }}>
+          <h2 style={{ marginTop: 0 }}>{t.errors.apiUnreachableTitle}</h2>
+          <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>{bootError}</p>
+          <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+            <button
+              type="button"
+              className="sf-btn sf-btn-primary"
+              onClick={() => {
+                setBootError(null);
+                bootRequestedRef.current = true;
+                void loginAsDemoJudge().then((res) => {
+                  if (!res.ok) {
+                    setBootError(res.error ?? t.errors.apiUnreachableTitle);
+                  }
+                });
+              }}
+            >
+              {t.actions.retry}
+            </button>
+            <button
+              type="button"
+              className="sf-btn"
+              onClick={() => navigate("/login")}
+            >
+              {t.nav.login}
+            </button>
+          </div>
+        </div>
+      </div>
     );
   }
 
-  return <>{children}</>;
+  return <SpaceFarmLoader variant="route" />;
 }
 
 export default function App() {

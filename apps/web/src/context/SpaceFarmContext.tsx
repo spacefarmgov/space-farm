@@ -349,6 +349,7 @@ export function SpaceFarmProvider({ children }: { children: ReactNode }) {
   const authTokenRef = useRef<string | null>(authToken);
   const localeRef = useRef<Locale>(locale);
   const unauthorizedHandledRef = useRef(false);
+  const demoLoginPromiseRef = useRef<Promise<AuthActionResult> | null>(null);
 
   useEffect(() => {
     authTokenRef.current = authToken;
@@ -1368,22 +1369,31 @@ export function SpaceFarmProvider({ children }: { children: ReactNode }) {
 
   const loginAsDemoJudge = useCallback(
     async (region = "Ganja-Dashkasan"): Promise<AuthActionResult> => {
-      try {
-        const res = await demoLoginAccount(region);
-        applyAuthSession(res.token, res.user, res.parcels);
-        setAuthModalOpen(false);
-        setAuthAlertMessage(null);
-        showToast(TRANSLATIONS[locale].auth.demoWelcome);
-        return { ok: true };
-      } catch (err) {
-        return extractMutationError(
-          err,
-          TRANSLATIONS[locale].errors.apiUnreachableTitle,
-          TRANSLATIONS[locale].auth.invalidCredentials,
-        );
+      if (demoLoginPromiseRef.current) {
+        return demoLoginPromiseRef.current;
       }
+      const pending = (async (): Promise<AuthActionResult> => {
+        try {
+          const res = await demoLoginAccount(region);
+          applyAuthSession(res.token, res.user, res.parcels);
+          setAuthModalOpen(false);
+          setAuthAlertMessage(null);
+          showToast(TRANSLATIONS[localeRef.current].auth.demoWelcome);
+          return { ok: true };
+        } catch (err) {
+          return extractMutationError(
+            err,
+            TRANSLATIONS[localeRef.current].errors.apiUnreachableTitle,
+            TRANSLATIONS[localeRef.current].auth.invalidCredentials,
+          );
+        } finally {
+          demoLoginPromiseRef.current = null;
+        }
+      })();
+      demoLoginPromiseRef.current = pending;
+      return pending;
     },
-    [applyAuthSession, locale, showToast],
+    [applyAuthSession, showToast],
   );
 
   const value: SpaceFarmContextValue = {

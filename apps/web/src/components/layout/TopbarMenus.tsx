@@ -94,10 +94,6 @@ export function TopbarUtilityCluster({ isHome }: TopbarUtilityProps) {
 
   function handleNavigate(path: string) {
     setOpenMenu(null);
-    if (!user) {
-      openAuthModal("login", t.auth.alertRequiredBody, "/explore");
-      return;
-    }
     navigate(path);
   }
 

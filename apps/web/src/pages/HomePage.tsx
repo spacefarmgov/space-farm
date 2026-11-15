@@ -11,7 +11,6 @@ import {
   FlaskConical,
   Globe2,
   Layers3,
-  Lock,
   LogIn,
   MapPin,
   Satellite,
@@ -56,7 +55,6 @@ export function HomePage() {
     selectRegion,
     openMethodology,
     openAuthModal,
-    triggerAuthAlert,
   } = useSpaceFarm();
   const navigate = useNavigate();
   const heroRef = useRef<HTMLElement | null>(null);
@@ -109,19 +107,11 @@ export function HomePage() {
   }, []);
 
   function guardWorkspaceAccess(targetRoute: string) {
-    if (!user) {
-      triggerAuthAlert(targetRoute);
-      return;
-    }
     navigate(targetRoute);
   }
 
   function handleRegionInspect(regionId: string, route = "/field") {
     selectRegion(regionId);
-    if (!user) {
-      triggerAuthAlert(route);
-      return;
-    }
     navigate(route);
   }
 
@@ -449,7 +439,6 @@ export function HomePage() {
                 className="sf-btn sf-btn-primary sf-btn-sm"
                 onClick={() => handleRegionInspect(featuredRegion.id, "/field")}
               >
-                {!user && <Lock size={13} aria-hidden="true" />}
                 <span>{t.landing.openInDashboard}</span>
                 <ArrowRight size={14} aria-hidden="true" />
               </button>
@@ -517,7 +506,7 @@ export function HomePage() {
                   onClick={() => guardWorkspaceAccess(step.route)}
                 >
                   <span>{locale === "az" ? "Bölməni aç" : "Open step"}</span>
-                  {!user ? <Lock size={13} aria-hidden="true" /> : <ArrowRight size={13} aria-hidden="true" />}
+                  <ArrowRight size={13} aria-hidden="true" />
                 </button>
               </div>
             </article>
@@ -687,7 +676,6 @@ export function HomePage() {
                   className="sf-btn sf-btn-primary"
                   onClick={() => guardWorkspaceAccess(activeSolution.route)}
                 >
-                  {!user && <Lock size={14} aria-hidden="true" />}
                   <span>{locale === "az" ? "Bu Modulu Aç" : "Open Module"}</span>
                   <ArrowRight size={15} aria-hidden="true" />
                 </button>
@@ -801,20 +789,19 @@ export function HomePage() {
           <div style={{ maxWidth: "60ch" }}>
             <h3 style={{ fontSize: 22, margin: "0 0 6px" }}>{t.home.finalCtaTitle}</h3>
             <p style={{ margin: 0, fontSize: 14, color: "var(--text-secondary)", lineHeight: 1.55 }}>
-              {user ? t.home.finalCtaBody : t.landing.ctaUnlockNote}
+              {t.home.finalCtaBody}
             </p>
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-            {user ? (
-              <button
-                type="button"
-                className="sf-btn sf-btn-primary"
-                onClick={() => navigate("/explore")}
-              >
-                <span>{t.nav.dashboard}</span>
-                <ArrowRight size={16} aria-hidden="true" />
-              </button>
-            ) : (
+            <button
+              type="button"
+              className="sf-btn sf-btn-primary"
+              onClick={() => navigate("/explore")}
+            >
+              <span>{user ? t.nav.dashboard : t.actions.exploreYourField}</span>
+              <ArrowRight size={16} aria-hidden="true" />
+            </button>
+            {!user && (
               <>
                 <button
                   type="button"
@@ -826,7 +813,7 @@ export function HomePage() {
                 </button>
                 <button
                   type="button"
-                  className="sf-btn sf-btn-primary"
+                  className="sf-btn"
                   onClick={() => openAuthModal("register", null, "/explore")}
                 >
                   <UserPlus size={16} aria-hidden="true" />
