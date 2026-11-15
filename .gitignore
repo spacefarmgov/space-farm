@@ -9,6 +9,13 @@
 # Dynamic data caches & large raw geospatial binaries
 data/cache/
 data/tmp/
+data/.auth_secret
+data/*.db
+data/*.sqlite*
+*.db
+*.db-wal
+*.db-shm
+*.sqlite*
 *.nc
 *.hdf
 *.h5

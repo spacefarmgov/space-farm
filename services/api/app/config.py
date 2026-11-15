@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     api_host: str = Field(default="127.0.0.1", alias="API_HOST")
     api_port: int = Field(default=8000, alias="API_PORT")
     cors_origins: str = Field(
-        default="http://localhost:5173,http://127.0.0.1:5173",
+        default="http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173",
         alias="CORS_ORIGINS",
     )
 
@@ -66,6 +66,35 @@ class Settings(BaseSettings):
     data_dir: str = Field(default="./data", alias="DATA_DIR")
     data_cache_dir: str = Field(default="./data/cache", alias="DATA_CACHE_DIR")
     contracts_dir: str = Field(default="./contracts", alias="CONTRACTS_DIR")
+
+    # Gemini AI integration
+    gemini_api_key: str = Field(default="", alias="GEMINI_API_KEY")
+    gemini_model: str = Field(default="gemini-3-flash-preview", alias="GEMINI_MODEL")
+    gemini_timeout_seconds: float = Field(default=30.0, alias="GEMINI_TIMEOUT_SECONDS")
+
+    # Background weather risk worker & cooldown
+    risk_worker_enabled: bool = Field(default=True, alias="RISK_WORKER_ENABLED")
+    risk_scan_interval_seconds: int = Field(default=900, alias="RISK_SCAN_INTERVAL_SECONDS")
+    risk_alert_cooldown_hours: int = Field(default=12, alias="RISK_ALERT_COOLDOWN_HOURS")
+
+    # Outbound Email / SMTP configuration
+    smtp_host: str = Field(default="", alias="SMTP_HOST")
+    smtp_port: int = Field(default=587, alias="SMTP_PORT")
+    smtp_user: str = Field(default="", alias="SMTP_USER")
+    smtp_password: str = Field(default="", alias="SMTP_PASSWORD")
+    smtp_from_email: str = Field(default="alerts@spacefarm.az", alias="SMTP_FROM_EMAIL")
+    smtp_use_tls: bool = Field(default=True, alias="SMTP_USE_TLS")
+
+    # Outbound SMS configuration (twilio | webhook | outbox)
+    sms_provider: Literal["twilio", "webhook", "outbox"] = Field(
+        default="outbox",
+        alias="SMS_PROVIDER",
+    )
+    twilio_account_sid: str = Field(default="", alias="TWILIO_ACCOUNT_SID")
+    twilio_auth_token: str = Field(default="", alias="TWILIO_AUTH_TOKEN")
+    twilio_from_number: str = Field(default="", alias="TWILIO_FROM_NUMBER")
+    sms_webhook_url: str = Field(default="", alias="SMS_WEBHOOK_URL")
+    sms_webhook_token: str = Field(default="", alias="SMS_WEBHOOK_TOKEN")
 
     @field_validator("cors_origins", mode="before")
     @classmethod

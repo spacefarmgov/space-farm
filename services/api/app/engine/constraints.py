@@ -84,8 +84,8 @@ def evaluate_sequence_constraints(
             )
         )
 
-    # 2. RULE_NO_CONSECUTIVE_SENSITIVE_FAMILY (Fabaceae / Asteraceae)
-    family_violation: str | None = None
+    # 2. RULE_NO_CONSECUTIVE_SENSITIVE_FAMILY (Fabaceae / Asteraceae) & disallowed_predecessor_crops
+    family_or_predecessor_violation: str | None = None
     pairs: list[tuple[str, CropInfo, CropInfo]] = []
     if prev_hist is not None:
         pairs.append(("prior->Y1", prev_hist, sequence[0]))
@@ -93,6 +93,11 @@ def evaluate_sequence_constraints(
     pairs.append(("Y2->Y3", sequence[1], sequence[2]))
 
     for label, prev_c, curr_c in pairs:
+        if prev_c.crop_id in curr_c.predecessor_rules.disallowed_predecessor_crops:
+            family_or_predecessor_violation = (
+                f"{label}: {curr_c.crop_id} disallows predecessor {prev_c.crop_id} per catalog predecessor_rules."
+            )
+            break
         if (
             prev_c.family == curr_c.family
             and (
@@ -100,14 +105,14 @@ def evaluate_sequence_constraints(
                 or prev_c.predecessor_rules.avoid_consecutive_same_family
             )
         ):
-            family_violation = (
+            family_or_predecessor_violation = (
                 f"{label}: consecutive {curr_c.family} crops ({prev_c.crop_id} -> {curr_c.crop_id}) "
                 "violate sensitive-family break constraint."
             )
             break
 
-    if family_violation:
-        failed_rules.append(("RULE_NO_CONSECUTIVE_SENSITIVE_FAMILY", family_violation))
+    if family_or_predecessor_violation:
+        failed_rules.append(("RULE_NO_CONSECUTIVE_SENSITIVE_FAMILY", family_or_predecessor_violation))
     else:
         checks.append(
             ConstraintCheckResult(

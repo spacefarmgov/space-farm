@@ -118,6 +118,72 @@ export interface ClimateBundle {
   synthetic: boolean;
 }
 
+export interface AnnualClimateSummary {
+  year: number;
+  mean_temp_c?: number | null;
+  min_temp_c?: number | null;
+  max_temp_c?: number | null;
+  total_precip_mm?: number | null;
+  frost_days: number;
+  heat_stress_days: number;
+  wet_days: number;
+  max_dry_spell_days: number;
+  coverage_ratio: number;
+  valid_days: number;
+  expected_days: number;
+}
+
+export interface MonthlyClimatePoint {
+  month: number;
+  label: string;
+  mean_temp_c?: number | null;
+  total_precip_mm?: number | null;
+  frost_days: number;
+  heat_stress_days: number;
+  wet_days: number;
+}
+
+export interface ClimateTrendSummary {
+  temp_shift_c_per_decade?: number | null;
+  precip_trend_pct_per_decade?: number | null;
+  multiyear_mean_temp_c?: number | null;
+  multiyear_mean_precip_mm?: number | null;
+  driest_year?: number | null;
+  wettest_year?: number | null;
+  hottest_year?: number | null;
+  max_dry_spell_days_overall: number;
+  drought_risk_level: "low" | "moderate" | "elevated" | "unknown";
+}
+
+export interface ClimateTimeseriesBundle {
+  contract_version: string;
+  query: {
+    latitude: number;
+    longitude: number;
+    start_date: string;
+    end_date: string;
+    time_standard: string;
+  };
+  data_mode: DataMode;
+  dataset_version: string;
+  annual_series: AnnualClimateSummary[];
+  focus_year: number;
+  focus_monthly_series: MonthlyClimatePoint[];
+  trend: ClimateTrendSummary;
+  sources: SourceRecord[];
+  quality: ClimateQuality;
+  warnings: string[];
+  synthetic: boolean;
+}
+
+export interface PlanAgronomicIndicators {
+  water_demand_mm_avg: number;
+  nitrogen_fixation_score: number;
+  erosion_protection_score: number;
+  bare_soil_gap_months_3yr: number;
+  climate_resilience_score: number;
+}
+
 export interface SimulationRequest {
   contract_version: "0.1.0";
   farm: {
@@ -157,6 +223,7 @@ export interface SimulationRequest {
     rainfall_multiplier: number;
   };
   max_plans: 1 | 2 | 3;
+  pinned_plan_id?: string | null;
 }
 
 export interface ScoreComponent {
@@ -196,6 +263,11 @@ export interface RotationPlan {
   }>;
   uncertainty: UncertaintyLevel;
   scenario_label: "baseline" | "hypothetical_rainfall_stress";
+  indicators?: PlanAgronomicIndicators | null;
+  benefits?: string[];
+  risk_factors?: string[];
+  feasible?: boolean;
+  failed_rules?: string[];
 }
 
 export interface SimulationResponse {
@@ -223,6 +295,8 @@ export interface SimulationResponse {
   weights_effective: { water: number; soil: number; income: number };
   unavailable_objectives: Array<{ objective: "water" | "soil" | "income"; reason: string }>;
   plans: RotationPlan[];
+  baseline_practice_plan?: RotationPlan | null;
+  pinned_plan_evaluation?: RotationPlan | null;
   climate: ClimateBundle;
   warnings: string[];
   rejected_summary: Array<{ rule_id: string; count: number; reason: string }>;

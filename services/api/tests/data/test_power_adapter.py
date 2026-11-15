@@ -377,6 +377,89 @@ class PowerAdapterTests(unittest.TestCase):
         for rule in catalog.rules:
             self.assertNotEqual(rule.validation_status, "expert_reviewed")
 
+    def test_stage2_extended_soil_wetness_and_irradiance_live_and_cache(self) -> None:
+        from datetime import timedelta
+
+        payload = _make_sample_power_payload(start=date(2024, 1, 1), days=10)
+        dates = [(date(2024, 1, 1) + timedelta(days=i)).strftime("%Y%m%d") for i in range(10)]
+        gwettop = {d: 0.45 for d in dates}
+        gwettop[dates[0]] = -999.0  # Sentinel fill must NOT be coerced to 0
+        gwetroot = {d: 0.52 for d in dates}
+        irrad = {d: 14.5 for d in dates}
+        rh2m = {d: 64.0 for d in dates}
+        ws2m = {d: 2.8 for d in dates}
+        payload["properties"]["parameter"]["GWETTOP"] = gwettop
+        payload["properties"]["parameter"]["GWETROOT"] = gwetroot
+        payload["properties"]["parameter"]["ALLSKY_SFC_SW_DWN"] = irrad
+        payload["properties"]["parameter"]["RH2M"] = rh2m
+        payload["properties"]["parameter"]["WS2M"] = ws2m
+        payload["parameters"]["GWETTOP"] = {"units": "1", "longname": "Surface Soil Wetness"}
+        payload["parameters"]["GWETROOT"] = {"units": "1", "longname": "Root Zone Soil Wetness"}
+        payload["parameters"]["ALLSKY_SFC_SW_DWN"] = {"units": "MJ/m^2/day"}
+        payload["parameters"]["RH2M"] = {"units": "%"}
+        payload["parameters"]["WS2M"] = {"units": "m/s"}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            params_requested = str(request.url.params.get("parameters", ""))
+            self.assertIn("GWETTOP", params_requested)
+            self.assertIn("GWETROOT", params_requested)
+            self.assertIn("ALLSKY_SFC_SW_DWN", params_requested)
+            self.assertIn("RH2M", params_requested)
+            self.assertIn("WS2M", params_requested)
+            return httpx.Response(200, json=payload)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            settings = Settings(
+                data_mode="live",
+                cache_dir=str(tmp_path / "cache"),
+                contracts_dir=str(self.repo_root / "contracts"),
+                raw_data_dir_override=str(tmp_path / "raw"),
+                processed_data_dir_override=str(tmp_path / "processed"),
+            )
+            query = ClimateQuery(
+                latitude=40.7,
+                longitude=46.4,
+                start_date=date(2024, 1, 1),
+                end_date=date(2024, 1, 10),
+                time_standard="UTC",
+            )
+            live_bundle = asyncio.run(
+                get_climate_features(
+                    query,
+                    mode_override="live",
+                    settings=settings,
+                    transport=httpx.MockTransport(handler),
+                )
+            )
+            feat_map = {f.feature_id: f for f in live_bundle.features}
+            self.assertEqual(feat_map["mean_surface_soil_wetness"].value, 0.45)
+            self.assertEqual(feat_map["mean_surface_soil_wetness"].valid_days, 9)
+            self.assertEqual(feat_map["mean_surface_soil_wetness"].unit, "1")
+            self.assertEqual(feat_map["mean_root_zone_soil_wetness"].value, 0.52)
+            self.assertEqual(feat_map["mean_solar_irradiance_mj_m2_day"].value, 14.5)
+            self.assertEqual(feat_map["mean_solar_irradiance_mj_m2_day"].unit, "MJ/m^2/day")
+            self.assertEqual(feat_map["mean_relative_humidity_pct"].value, 64.0)
+            self.assertEqual(feat_map["mean_wind_speed_m_s"].value, 2.8)
+            self.assertIn("GWETTOP", live_bundle.sources[0].parameter_codes)
+
+            cached_bundle = load_cached_climate_bundle(query, settings)
+            self.assertIsNotNone(cached_bundle)
+            cached_map = {f.feature_id: f for f in cached_bundle.features}  # type: ignore[union-attr]
+            self.assertEqual(cached_map["mean_root_zone_soil_wetness"].value, 0.52)
+
+            bad_unit_payload = json.loads(json.dumps(payload))
+            bad_unit_payload["parameters"]["GWETTOP"] = {"units": "%"}
+            with self.assertRaises(DataQualityError):
+                normalize_and_aggregate_power(
+                    bad_unit_payload,
+                    raw_bytes=b"{}",
+                    request_url="https://example.test",
+                    retrieved_at=datetime.now(timezone.utc),
+                    query=query,
+                    data_mode="live",
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

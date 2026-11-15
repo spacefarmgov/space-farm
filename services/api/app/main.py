@@ -15,7 +15,10 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.config import CONTRACT_VERSION, ensure_runtime_dirs, get_settings
 from app.data_adapters.exceptions import DataQualityError, DataUnavailable, InvalidDataQuery
 from app.routes.api import router as v1_router
+from app.routes.orbital import router as orbital_router
+from app.routes.workspace_api import router as workspace_router
 from app.schemas.models import ErrorBody, ErrorDetail, ErrorEnvelope
+from app.workers.risk_monitor import risk_worker
 
 logger = logging.getLogger("space_farm.api")
 
@@ -23,7 +26,11 @@ logger = logging.getLogger("space_farm.api")
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     ensure_runtime_dirs(get_settings())
-    yield
+    risk_worker.start()
+    try:
+        yield
+    finally:
+        await risk_worker.stop()
 
 
 def _request_id_for(request: Request) -> str:
@@ -75,7 +82,7 @@ def create_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=settings.cors_origin_list,
         allow_credentials=False,
-        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["*"],
     )
 
@@ -165,6 +172,8 @@ def create_app() -> FastAPI:
         )
 
     app.include_router(v1_router)
+    app.include_router(orbital_router)
+    app.include_router(workspace_router)
     return app
 
 

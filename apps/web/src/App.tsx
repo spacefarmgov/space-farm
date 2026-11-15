@@ -1,35 +1,177 @@
-import { useEffect, useState } from "react";
-import { getHealth } from "./api/client";
-import type { HealthResponse } from "./api/types";
+import { Suspense, lazy, useEffect, type ReactNode } from "react";
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { SpaceFarmProvider, useSpaceFarm } from "./context/SpaceFarmContext";
+import {
+  SpaceFarmBootCurtain,
+  SpaceFarmLoader,
+  SpaceFarmRouteBar,
+} from "./components/ui/SpaceFarmLoader";
+import { HomePage } from "./pages/HomePage";
 
-export function App() {
-  const [health, setHealth] = useState<HealthResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
+// Route-level code splitting so Orbital Explorer / Leaflet do not block Home hero render
+const OrbitalExplorerPage = lazy(() =>
+  import("./pages/OrbitalExplorerPage").then((m) => ({ default: m.OrbitalExplorerPage })),
+);
+const FieldIntelligencePage = lazy(() =>
+  import("./pages/FieldIntelligencePage").then((m) => ({ default: m.FieldIntelligencePage })),
+);
+const ClimateHistoryPage = lazy(() =>
+  import("./pages/ClimateHistoryPage").then((m) => ({ default: m.ClimateHistoryPage })),
+);
+const RotationStudioPage = lazy(() =>
+  import("./pages/RotationStudioPage").then((m) => ({ default: m.RotationStudioPage })),
+);
+const ScenarioLabPage = lazy(() =>
+  import("./pages/ScenarioLabPage").then((m) => ({ default: m.ScenarioLabPage })),
+);
+const SourcesExplanationsPage = lazy(() =>
+  import("./pages/SourcesExplanationsPage").then((m) => ({ default: m.SourcesExplanationsPage })),
+);
+const ProfilePage = lazy(() =>
+  import("./pages/ProfilePage").then((m) => ({ default: m.ProfilePage })),
+);
+const SpaceFarmAiPage = lazy(() =>
+  import("./pages/SpaceFarmAiPage").then((m) => ({ default: m.SpaceFarmAiPage })),
+);
+const RiskAlertsPage = lazy(() =>
+  import("./pages/RiskAlertsPage").then((m) => ({ default: m.RiskAlertsPage })),
+);
+const AuthPage = lazy(() =>
+  import("./pages/AuthPage").then((m) => ({ default: m.AuthPage })),
+);
+
+function RouteFallback() {
+  return <SpaceFarmLoader variant="route" />;
+}
+
+function ScrollToTopOnNavigate() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
+  return null;
+}
+
+function ProtectedRoute({ children }: { children: ReactNode }) {
+  const { user, t, triggerAuthAlert } = useSpaceFarm();
+  const location = useLocation();
 
   useEffect(() => {
-    const controller = new AbortController();
-    getHealth(controller.signal)
-      .then(setHealth)
-      .catch((err: unknown) => {
-        if (err instanceof DOMException && err.name === "AbortError") return;
-        setError(err instanceof Error ? err.message : "Unable to reach Space Farm API");
-      });
-    return () => controller.abort();
-  }, []);
+    if (!user) {
+      triggerAuthAlert(location.pathname || "/explore");
+    }
+  }, [user, location.pathname, triggerAuthAlert]);
 
+  if (!user) {
+    return (
+      <Navigate
+        to="/login"
+        replace
+        state={{
+          alertMessage: t.auth.alertRequiredBody,
+          redirectTo: location.pathname || "/explore",
+        }}
+      />
+    );
+  }
+
+  return <>{children}</>;
+}
+
+export default function App() {
   return (
-    <main style={{ fontFamily: "system-ui, sans-serif", maxWidth: 720, margin: "2rem auto", padding: "0 1rem" }}>
-      <h1>Space Farm — Team CODE44 (Foundation Shell)</h1>
-      <p>Frontend workspace skeleton connected to frozen API contract <code>v0.1.0</code>.</p>
-      {health ? (
-        <pre style={{ background: "#f4f6f8", padding: "1rem", borderRadius: 8 }}>
-          {JSON.stringify(health, null, 2)}
-        </pre>
-      ) : error ? (
-        <p style={{ color: "#b91c1c" }}>API status error: {error}</p>
-      ) : (
-        <p>Checking backend health...</p>
-      )}
-    </main>
+    <BrowserRouter
+      future={{
+        v7_startTransition: true,
+        v7_relativeSplatPath: true,
+      }}
+    >
+      <SpaceFarmProvider>
+        <SpaceFarmBootCurtain />
+        <SpaceFarmRouteBar />
+        <ScrollToTopOnNavigate />
+        <Suspense fallback={<RouteFallback />}>
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/login" element={<AuthPage initialMode="login" />} />
+            <Route path="/register" element={<AuthPage initialMode="register" />} />
+            <Route path="/forgot-password" element={<AuthPage initialMode="forgot-password" />} />
+            <Route
+              path="/explore"
+              element={
+                <ProtectedRoute>
+                  <OrbitalExplorerPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/field"
+              element={
+                <ProtectedRoute>
+                  <FieldIntelligencePage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/climate"
+              element={
+                <ProtectedRoute>
+                  <ClimateHistoryPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/rotation"
+              element={
+                <ProtectedRoute>
+                  <RotationStudioPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/scenarios"
+              element={
+                <ProtectedRoute>
+                  <ScenarioLabPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/alerts"
+              element={
+                <ProtectedRoute>
+                  <RiskAlertsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/sources"
+              element={
+                <ProtectedRoute>
+                  <SourcesExplanationsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/ai"
+              element={
+                <ProtectedRoute>
+                  <SpaceFarmAiPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/profile"
+              element={
+                <ProtectedRoute>
+                  <ProfilePage />
+                </ProtectedRoute>
+              }
+            />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
+      </SpaceFarmProvider>
+    </BrowserRouter>
   );
 }

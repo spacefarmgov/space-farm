@@ -12,9 +12,17 @@ import httpx
 
 from app.config import Settings
 from app.data_adapters.exceptions import DataQualityError, DataUnavailable, InvalidDataQuery
-from app.schemas.models import ClimateQuery
+from app.schemas.models import ClimateQuery, ClimateTimeseriesQuery
 
 NASA_POWER_PARAMETERS: tuple[str, ...] = ("T2M", "T2M_MIN", "T2M_MAX", "PRECTOTCORR")
+NASA_POWER_EXTENDED_PARAMETERS: tuple[str, ...] = (
+    "GWETTOP",
+    "GWETROOT",
+    "ALLSKY_SFC_SW_DWN",
+    "RH2M",
+    "WS2M",
+)
+NASA_POWER_ALL_PARAMETERS: tuple[str, ...] = NASA_POWER_PARAMETERS + NASA_POWER_EXTENDED_PARAMETERS
 NASA_POWER_DOCS_URL = "https://power.larc.nasa.gov/docs/services/api/temporal/daily/"
 _SENSITIVE_QUERY_KEYS = {"api_key", "apikey", "token", "key", "secret", "password"}
 
@@ -31,7 +39,7 @@ def sanitize_url(raw_url: str) -> str:
 
 
 def build_power_query_params(
-    query: ClimateQuery,
+    query: ClimateQuery | ClimateTimeseriesQuery,
     *,
     community: str = "AG",
     parameters: tuple[str, ...] = NASA_POWER_PARAMETERS,
@@ -98,13 +106,18 @@ async def _wait_for_retry(attempt: int, deadline: float, retry_after: float | No
 
 
 async def fetch_power_daily_raw(
-    query: ClimateQuery,
+    query: ClimateQuery | ClimateTimeseriesQuery,
     settings: Settings,
     *,
+    parameters: tuple[str, ...] = NASA_POWER_PARAMETERS,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> tuple[dict, str, bytes, datetime]:
     """Fetch daily point JSON from NASA POWER with bounded retry budget and no 422 retry."""
-    params = build_power_query_params(query, community=settings.nasa_power_community)
+    params = build_power_query_params(
+        query,
+        community=settings.nasa_power_community,
+        parameters=parameters,
+    )
     budget_seconds = max(0.5, float(settings.nasa_power_retry_budget_seconds))
     max_retries = max(0, int(settings.nasa_power_max_retries))
     deadline = time.monotonic() + budget_seconds

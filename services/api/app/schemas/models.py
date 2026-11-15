@@ -186,6 +186,68 @@ class ClimateQuery(StrictModel):
         return self
 
 
+class ClimateTimeseriesQuery(StrictModel):
+    """Multi-year historical NASA POWER query (1-15 years, UTC) for trend & risk analysis."""
+
+    latitude: float = Field(ge=-90.0, le=90.0)
+    longitude: float = Field(ge=-180.0, le=180.0)
+    start_date: date
+    end_date: date
+    time_standard: str = "UTC"
+
+    @field_validator("latitude", "longitude")
+    @classmethod
+    def _check_finite_ts_coords(cls, value: float, info) -> float:
+        return _ensure_finite(value, info.field_name)
+
+    @model_validator(mode="after")
+    def _validate_span_and_standard(self) -> ClimateTimeseriesQuery:
+        if self.start_date > self.end_date:
+            raise ValueError("start_date must be <= end_date")
+        if (self.end_date.year - self.start_date.year) > 15:
+            raise ValueError("climate timeseries queries support at most a 16-year span")
+        if self.time_standard != "UTC":
+            raise ValueError("climate timeseries requires time_standard='UTC'")
+        return self
+
+
+class AnnualClimateSummary(OutputModel):
+    year: int = Field(ge=1950, le=2100)
+    mean_temp_c: float | None = None
+    min_temp_c: float | None = None
+    max_temp_c: float | None = None
+    total_precip_mm: float | None = None
+    frost_days: int = Field(ge=0)
+    heat_stress_days: int = Field(ge=0)
+    wet_days: int = Field(ge=0)
+    max_dry_spell_days: int = Field(ge=0)
+    coverage_ratio: float = Field(ge=0.0, le=1.0)
+    valid_days: int = Field(ge=0)
+    expected_days: int = Field(ge=1)
+
+
+class MonthlyClimatePoint(OutputModel):
+    month: int = Field(ge=1, le=12)
+    label: str
+    mean_temp_c: float | None = None
+    total_precip_mm: float | None = None
+    frost_days: int = Field(ge=0)
+    heat_stress_days: int = Field(ge=0)
+    wet_days: int = Field(ge=0)
+
+
+class ClimateTrendSummary(OutputModel):
+    temp_shift_c_per_decade: float | None = None
+    precip_trend_pct_per_decade: float | None = None
+    multiyear_mean_temp_c: float | None = None
+    multiyear_mean_precip_mm: float | None = None
+    driest_year: int | None = None
+    wettest_year: int | None = None
+    hottest_year: int | None = None
+    max_dry_spell_days_overall: int = Field(ge=0)
+    drought_risk_level: Literal["low", "moderate", "elevated", "unknown"] = "unknown"
+
+
 class ClimateFeature(OutputModel):
     feature_id: str
     value: float | None = None
@@ -227,6 +289,21 @@ class ClimateBundle(OutputModel):
     dataset_version: str
     features: list[ClimateFeature]
     sources: list[SourceRecord]
+    quality: ClimateQuality
+    warnings: list[str] = Field(default_factory=list)
+    synthetic: bool = False
+
+
+class ClimateTimeseriesBundle(OutputModel):
+    contract_version: str = CONTRACT_VERSION
+    query: ClimateTimeseriesQuery
+    data_mode: DataMode
+    dataset_version: str
+    annual_series: list[AnnualClimateSummary] = Field(default_factory=list)
+    focus_year: int = Field(ge=1950, le=2100)
+    focus_monthly_series: list[MonthlyClimatePoint] = Field(default_factory=list)
+    trend: ClimateTrendSummary
+    sources: list[SourceRecord] = Field(default_factory=list)
     quality: ClimateQuality
     warnings: list[str] = Field(default_factory=list)
     synthetic: bool = False
@@ -354,6 +431,15 @@ class SimulationRequest(StrictModel):
     preferences: PreferenceWeights
     scenario: ScenarioInput = Field(default_factory=ScenarioInput)
     max_plans: int = Field(default=3, ge=1, le=3)
+    pinned_plan_id: str | None = None
+
+
+class PlanAgronomicIndicators(OutputModel):
+    water_demand_mm_avg: float = Field(ge=0.0)
+    nitrogen_fixation_score: float = Field(ge=0.0, le=1.0)
+    erosion_protection_score: float = Field(ge=0.0, le=1.0)
+    bare_soil_gap_months_3yr: int = Field(ge=0, le=36)
+    climate_resilience_score: float = Field(ge=0.0, le=1.0)
 
 
 class EffectiveWeights(OutputModel):
@@ -417,6 +503,11 @@ class RotationPlan(OutputModel):
     constraints_checked: list[ConstraintCheckResult] = Field(default_factory=list)
     uncertainty: UncertaintyLevel
     scenario_label: Literal["baseline", "hypothetical_rainfall_stress"]
+    indicators: PlanAgronomicIndicators | None = None
+    benefits: list[str] = Field(default_factory=list)
+    risk_factors: list[str] = Field(default_factory=list)
+    feasible: bool = True
+    failed_rules: list[str] = Field(default_factory=list)
 
 
 class RejectedSummaryItem(OutputModel):
@@ -441,6 +532,8 @@ class SimulationResponse(OutputModel):
     weights_effective: EffectiveWeights
     unavailable_objectives: list[UnavailableObjective] = Field(default_factory=list)
     plans: list[RotationPlan] = Field(default_factory=list, max_length=3)
+    baseline_practice_plan: RotationPlan | None = None
+    pinned_plan_evaluation: RotationPlan | None = None
     climate: ClimateBundle
     warnings: list[str] = Field(default_factory=list)
     rejected_summary: list[RejectedSummaryItem] = Field(default_factory=list)

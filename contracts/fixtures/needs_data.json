@@ -1,8 +1,8 @@
 {
   "contract_version": "0.1.0",
   "request_id": "fixture-needs-data-001",
-  "simulation_id": "eb63d31a-2e34-4b1f-b7e0-99a69ba7bc0c",
-  "created_at": "2026-11-14T10:58:18.864112Z",
+  "simulation_id": "949359e3-a895-46b6-9e8b-77e15eaada4d",
+  "created_at": "2026-11-15T00:01:21.645198Z",
   "model_version": "rotation-engine-0.1.0",
   "rules_version": "agronomy-rules-0.1.0",
   "catalog_version": "crops-0.1.0",
@@ -42,6 +42,8 @@
     }
   ],
   "plans": [],
+  "baseline_practice_plan": null,
+  "pinned_plan_evaluation": null,
   "climate": {
     "contract_version": "0.1.0",
     "query": {
@@ -139,7 +141,7 @@
   ],
   "rejected_summary": [],
   "limitations": [
-    "Agronomic water and pH bounds come from generalized FAO literature (source_supported/provisional) and await local Azerbaijan agronomist validation.",
+    "Agronomic water and pH bounds combine FAO crop parameters with your active parcel soil lab profile and regional baselines.",
     "NASA POWER Daily Point observations reflect a ~0.5x0.625 deg MERRA-2 grid cell rather than on-farm soil moisture probes or micro-climate stations.",
     "3-year rotation scoring uses historical period climate features as a baseline stress lens, not a 3-year seasonal weather forecast."
   ],

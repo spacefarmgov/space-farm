@@ -9,11 +9,17 @@ from pydantic import ValidationError
 
 from app.config import CONTRACT_VERSION, MODEL_VERSION, get_settings
 from app.data_adapters.exceptions import InvalidDataQuery
-from app.data_adapters.provider import get_climate_features, get_crop_catalog
+from app.data_adapters.provider import (
+    get_climate_features,
+    get_climate_timeseries,
+    get_crop_catalog,
+)
 from app.engine.planner import run_simulation
 from app.schemas.models import (
     ClimateBundle,
     ClimateQuery,
+    ClimateTimeseriesBundle,
+    ClimateTimeseriesQuery,
     CropCatalog,
     DataMode,
     HealthResponse,
@@ -71,6 +77,37 @@ async def get_climate_features_route(
         raise InvalidDataQuery(err_msg, field="query", reason="invalid_climate_query") from exc
 
     return await get_climate_features(query, mode_override=mode, settings=settings)
+
+
+@router.get(
+    "/climate/timeseries",
+    response_model=ClimateTimeseriesBundle,
+    summary="Fetch multi-year NASA POWER climate series, trends, and drought/frost/heat indicators",
+)
+async def get_climate_timeseries_route(
+    latitude: float = Query(..., ge=-90.0, le=90.0),
+    longitude: float = Query(..., ge=-180.0, le=180.0),
+    start_date: date = Query(default=date(2015, 1, 1)),
+    end_date: date = Query(default=date(2024, 12, 31)),
+    time_standard: str = Query(default="UTC"),
+    mode: DataMode | None = Query(default=None),
+) -> ClimateTimeseriesBundle:
+    settings = get_settings()
+    try:
+        query = ClimateTimeseriesQuery(
+            latitude=latitude,
+            longitude=longitude,
+            start_date=start_date,
+            end_date=end_date,
+            time_standard=time_standard,
+        )
+    except ValidationError as exc:
+        err_msg = "; ".join(e.get("msg", "invalid query") for e in exc.errors())
+        raise InvalidDataQuery(
+            err_msg, field="query", reason="invalid_climate_timeseries_query"
+        ) from exc
+
+    return await get_climate_timeseries(query, mode_override=mode, settings=settings)
 
 
 @router.post(

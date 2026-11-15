@@ -154,6 +154,114 @@
         }
       }
     },
+    "/api/v1/climate/timeseries": {
+      "get": {
+        "tags": [
+          "space-farm-v1"
+        ],
+        "summary": "Fetch multi-year NASA POWER climate series, trends, and drought/frost/heat indicators",
+        "operationId": "get_climate_timeseries_route_api_v1_climate_timeseries_get",
+        "parameters": [
+          {
+            "name": "latitude",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "maximum": 90.0,
+              "minimum": -90.0,
+              "title": "Latitude"
+            }
+          },
+          {
+            "name": "longitude",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "maximum": 180.0,
+              "minimum": -180.0,
+              "title": "Longitude"
+            }
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "default": "2015-01-01",
+              "title": "Start Date"
+            }
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "default": "2024-12-31",
+              "title": "End Date"
+            }
+          },
+          {
+            "name": "time_standard",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "UTC",
+              "title": "Time Standard"
+            }
+          },
+          {
+            "name": "mode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "live",
+                    "cached",
+                    "demo_fixture"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mode"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClimateTimeseriesBundle"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/simulations": {
       "post": {
         "tags": [
@@ -201,6 +309,1044 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SimulationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orbital/tle": {
+      "get": {
+        "tags": [
+          "orbital-telemetry"
+        ],
+        "summary": "Fetch live CelesTrak SGP4 TLEs for NASA TERRA and LANDSAT 8",
+        "operationId": "get_orbital_tle_api_orbital_tle_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Orbital Tle Api Orbital Tle Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orbital/wind-grid": {
+      "get": {
+        "tags": [
+          "orbital-telemetry"
+        ],
+        "summary": "Fetch live Open-Meteo global 84-point 10m wind & air temperature grid",
+        "operationId": "get_orbital_wind_grid_api_orbital_wind_grid_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Orbital Wind Grid Api Orbital Wind Grid Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orbital/elevation": {
+      "get": {
+        "tags": [
+          "orbital-telemetry"
+        ],
+        "summary": "Fetch 90m SRTM/Copernicus terrain elevation (m a.s.l.) for coordinates",
+        "operationId": "get_orbital_elevation_api_orbital_elevation_get",
+        "parameters": [
+          {
+            "name": "latitude",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "maximum": 90.0,
+              "minimum": -90.0,
+              "title": "Latitude"
+            }
+          },
+          {
+            "name": "longitude",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "maximum": 180.0,
+              "minimum": -180.0,
+              "title": "Longitude"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Orbital Elevation Api Orbital Elevation Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/register": {
+      "post": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Register Account",
+        "operationId": "register_account_api_v1_auth_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Register Account Api V1 Auth Register Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Login Account",
+        "operationId": "login_account_api_v1_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Login Account Api V1 Auth Login Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/forgot-password": {
+      "post": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Request Password Reset",
+        "operationId": "request_password_reset_api_v1_auth_forgot_password_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForgotPasswordPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Request Password Reset Api V1 Auth Forgot Password Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/profile": {
+      "get": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Get Profile",
+        "operationId": "get_profile_api_v1_profile_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Profile Api V1 Profile Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Update Profile",
+        "operationId": "update_profile_api_v1_profile_put",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfilePatchPayload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Update Profile Api V1 Profile Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/parcels": {
+      "post": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Create Parcel",
+        "operationId": "create_parcel_api_v1_parcels_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ParcelCreatePayload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Create Parcel Api V1 Parcels Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/parcels/{parcel_id}": {
+      "put": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Update Parcel Details",
+        "operationId": "update_parcel_details_api_v1_parcels__parcel_id__put",
+        "parameters": [
+          {
+            "name": "parcel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Parcel Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ParcelUpdatePayload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Update Parcel Details Api V1 Parcels  Parcel Id  Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Remove Parcel",
+        "operationId": "remove_parcel_api_v1_parcels__parcel_id__delete",
+        "parameters": [
+          {
+            "name": "parcel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Parcel Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Remove Parcel Api V1 Parcels  Parcel Id  Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/parcels/{parcel_id}/activate": {
+      "post": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Activate Parcel",
+        "operationId": "activate_parcel_api_v1_parcels__parcel_id__activate_post",
+        "parameters": [
+          {
+            "name": "parcel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Parcel Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Activate Parcel Api V1 Parcels  Parcel Id  Activate Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ai/history": {
+      "get": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Get Ai History",
+        "operationId": "get_ai_history_api_v1_ai_history_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Ai History Api V1 Ai History Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Delete Ai History",
+        "operationId": "delete_ai_history_api_v1_ai_history_delete",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Delete Ai History Api V1 Ai History Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ai/assist": {
+      "post": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Assist Field",
+        "operationId": "assist_field_api_v1_ai_assist_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AiAssistPayload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Assist Field Api V1 Ai Assist Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/alerts/overview": {
+      "get": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Get Alerts Overview",
+        "operationId": "get_alerts_overview_api_v1_alerts_overview_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Alerts Overview Api V1 Alerts Overview Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/alerts/scan": {
+      "post": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Scan User Alerts",
+        "operationId": "scan_user_alerts_api_v1_alerts_scan_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Scan User Alerts Api V1 Alerts Scan Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/alerts/preferences": {
+      "patch": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Update Alert Preferences",
+        "operationId": "update_alert_preferences_api_v1_alerts_preferences_patch",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotificationPreferencesPayload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Update Alert Preferences Api V1 Alerts Preferences Patch"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/alerts/{alert_id}/status": {
+      "post": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Set Alert Status",
+        "operationId": "set_alert_status_api_v1_alerts__alert_id__status_post",
+        "parameters": [
+          {
+            "name": "alert_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Alert Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlertStatusPayload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Set Alert Status Api V1 Alerts  Alert Id  Status Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/alerts/verify-dispatch": {
+      "post": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Verify Notification Dispatch",
+        "operationId": "verify_notification_dispatch_api_v1_alerts_verify_dispatch_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Verify Notification Dispatch Api V1 Alerts Verify Dispatch Post"
                 }
               }
             }
@@ -366,6 +1512,180 @@
           "validation_status"
         ],
         "title": "AgronomicRule"
+      },
+      "AiAssistPayload": {
+        "properties": {
+          "question": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Question"
+          },
+          "locale": {
+            "type": "string",
+            "enum": [
+              "az",
+              "en"
+            ],
+            "title": "Locale",
+            "default": "az"
+          },
+          "farm": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FarmInput"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Start Date",
+            "default": "2024-01-01"
+          },
+          "end_date": {
+            "type": "string",
+            "format": "date",
+            "title": "End Date",
+            "default": "2024-12-31"
+          },
+          "preferences": {
+            "$ref": "#/components/schemas/PreferenceWeights"
+          },
+          "scenario": {
+            "$ref": "#/components/schemas/ScenarioInput"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "question"
+        ],
+        "title": "AiAssistPayload"
+      },
+      "AlertStatusPayload": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "acknowledged",
+              "resolved"
+            ],
+            "title": "Status"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "AlertStatusPayload"
+      },
+      "AnnualClimateSummary": {
+        "properties": {
+          "year": {
+            "type": "integer",
+            "maximum": 2100.0,
+            "minimum": 1950.0,
+            "title": "Year"
+          },
+          "mean_temp_c": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean Temp C"
+          },
+          "min_temp_c": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Temp C"
+          },
+          "max_temp_c": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Temp C"
+          },
+          "total_precip_mm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Precip Mm"
+          },
+          "frost_days": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Frost Days"
+          },
+          "heat_stress_days": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Heat Stress Days"
+          },
+          "wet_days": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Wet Days"
+          },
+          "max_dry_spell_days": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Max Dry Spell Days"
+          },
+          "coverage_ratio": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Coverage Ratio"
+          },
+          "valid_days": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Valid Days"
+          },
+          "expected_days": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expected Days"
+          }
+        },
+        "type": "object",
+        "required": [
+          "year",
+          "frost_days",
+          "heat_stress_days",
+          "wet_days",
+          "max_dry_spell_days",
+          "coverage_ratio",
+          "valid_days",
+          "expected_days"
+        ],
+        "title": "AnnualClimateSummary"
       },
       "ClimateBundle": {
         "properties": {
@@ -585,6 +1905,235 @@
           "end_date"
         ],
         "title": "ClimateQuery"
+      },
+      "ClimateTimeseriesBundle": {
+        "properties": {
+          "contract_version": {
+            "type": "string",
+            "title": "Contract Version",
+            "default": "0.1.0"
+          },
+          "query": {
+            "$ref": "#/components/schemas/ClimateTimeseriesQuery"
+          },
+          "data_mode": {
+            "type": "string",
+            "enum": [
+              "live",
+              "cached",
+              "demo_fixture"
+            ],
+            "title": "Data Mode"
+          },
+          "dataset_version": {
+            "type": "string",
+            "title": "Dataset Version"
+          },
+          "annual_series": {
+            "items": {
+              "$ref": "#/components/schemas/AnnualClimateSummary"
+            },
+            "type": "array",
+            "title": "Annual Series"
+          },
+          "focus_year": {
+            "type": "integer",
+            "maximum": 2100.0,
+            "minimum": 1950.0,
+            "title": "Focus Year"
+          },
+          "focus_monthly_series": {
+            "items": {
+              "$ref": "#/components/schemas/MonthlyClimatePoint"
+            },
+            "type": "array",
+            "title": "Focus Monthly Series"
+          },
+          "trend": {
+            "$ref": "#/components/schemas/ClimateTrendSummary"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/SourceRecord"
+            },
+            "type": "array",
+            "title": "Sources"
+          },
+          "quality": {
+            "type": "string",
+            "enum": [
+              "complete",
+              "partial",
+              "insufficient"
+            ],
+            "title": "Quality"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "synthetic": {
+            "type": "boolean",
+            "title": "Synthetic",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "query",
+          "data_mode",
+          "dataset_version",
+          "focus_year",
+          "trend",
+          "quality"
+        ],
+        "title": "ClimateTimeseriesBundle"
+      },
+      "ClimateTimeseriesQuery": {
+        "properties": {
+          "latitude": {
+            "type": "number",
+            "maximum": 90.0,
+            "minimum": -90.0,
+            "title": "Latitude"
+          },
+          "longitude": {
+            "type": "number",
+            "maximum": 180.0,
+            "minimum": -180.0,
+            "title": "Longitude"
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Start Date"
+          },
+          "end_date": {
+            "type": "string",
+            "format": "date",
+            "title": "End Date"
+          },
+          "time_standard": {
+            "type": "string",
+            "title": "Time Standard",
+            "default": "UTC"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "latitude",
+          "longitude",
+          "start_date",
+          "end_date"
+        ],
+        "title": "ClimateTimeseriesQuery",
+        "description": "Multi-year historical NASA POWER query (1-15 years, UTC) for trend & risk analysis."
+      },
+      "ClimateTrendSummary": {
+        "properties": {
+          "temp_shift_c_per_decade": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temp Shift C Per Decade"
+          },
+          "precip_trend_pct_per_decade": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Precip Trend Pct Per Decade"
+          },
+          "multiyear_mean_temp_c": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Multiyear Mean Temp C"
+          },
+          "multiyear_mean_precip_mm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Multiyear Mean Precip Mm"
+          },
+          "driest_year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Driest Year"
+          },
+          "wettest_year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wettest Year"
+          },
+          "hottest_year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hottest Year"
+          },
+          "max_dry_spell_days_overall": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Max Dry Spell Days Overall"
+          },
+          "drought_risk_level": {
+            "type": "string",
+            "enum": [
+              "low",
+              "moderate",
+              "elevated",
+              "unknown"
+            ],
+            "title": "Drought Risk Level",
+            "default": "unknown"
+          }
+        },
+        "type": "object",
+        "required": [
+          "max_dry_spell_days_overall"
+        ],
+        "title": "ClimateTrendSummary"
       },
       "ConstraintCheckResult": {
         "properties": {
@@ -883,6 +2432,22 @@
         ],
         "title": "FarmInput"
       },
+      "ForgotPasswordPayload": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 180,
+            "minLength": 5,
+            "title": "Email"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "title": "ForgotPasswordPayload"
+      },
       "GeoPoint": {
         "properties": {
           "latitude": {
@@ -1033,6 +2598,312 @@
         ],
         "title": "InputSummary"
       },
+      "LabMetricsPayload": {
+        "properties": {
+          "organic_matter_pct": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 30.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organic Matter Pct"
+          },
+          "nitrogen_mg_kg": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nitrogen Mg Kg"
+          },
+          "phosphorus_mg_kg": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phosphorus Mg Kg"
+          },
+          "potassium_mg_kg": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 2500.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Potassium Mg Kg"
+          },
+          "ec_ds_m": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 30.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ec Ds M"
+          },
+          "moisture_capacity_pct": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 100.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Moisture Capacity Pct"
+          },
+          "depth_top_cm": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 200.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Depth Top Cm"
+          },
+          "depth_bottom_cm": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 200.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Depth Bottom Cm"
+          },
+          "sample_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sample Date"
+          },
+          "lab_report_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lab Report Id"
+          },
+          "soil_source_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "laboratory",
+                  "extension_service",
+                  "field_probe",
+                  "user_reported"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Soil Source Type"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "LabMetricsPayload"
+      },
+      "LoginPayload": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 180,
+            "minLength": 5,
+            "title": "Email"
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Password"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "LoginPayload"
+      },
+      "MonthlyClimatePoint": {
+        "properties": {
+          "month": {
+            "type": "integer",
+            "maximum": 12.0,
+            "minimum": 1.0,
+            "title": "Month"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "mean_temp_c": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean Temp C"
+          },
+          "total_precip_mm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Precip Mm"
+          },
+          "frost_days": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Frost Days"
+          },
+          "heat_stress_days": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Heat Stress Days"
+          },
+          "wet_days": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Wet Days"
+          }
+        },
+        "type": "object",
+        "required": [
+          "month",
+          "label",
+          "frost_days",
+          "heat_stress_days",
+          "wet_days"
+        ],
+        "title": "MonthlyClimatePoint"
+      },
+      "NotificationPreferencesPayload": {
+        "properties": {
+          "sms_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sms Enabled"
+          },
+          "email_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email Enabled"
+          },
+          "min_severity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "critical",
+                  "high",
+                  "moderate"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Severity"
+          },
+          "custom_frost_c": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 15.0,
+                "minimum": -15.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Custom Frost C"
+          },
+          "custom_heat_c": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 55.0,
+                "minimum": 20.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Custom Heat C"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "NotificationPreferencesPayload"
+      },
       "ObjectiveInputs": {
         "properties": {
           "water_efficiency_hint": {
@@ -1074,6 +2945,273 @@
         },
         "type": "object",
         "title": "ObjectiveInputs"
+      },
+      "ParcelCreatePayload": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 2,
+            "title": "Label"
+          },
+          "region_id": {
+            "type": "string",
+            "maxLength": 80,
+            "title": "Region Id",
+            "default": "custom"
+          },
+          "latitude": {
+            "type": "number",
+            "maximum": 90.0,
+            "minimum": -90.0,
+            "title": "Latitude"
+          },
+          "longitude": {
+            "type": "number",
+            "maximum": 180.0,
+            "minimum": -180.0,
+            "title": "Longitude"
+          },
+          "area_ha": {
+            "type": "number",
+            "maximum": 100000.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Area Ha",
+            "default": 25.0
+          },
+          "irrigation_type": {
+            "type": "string",
+            "enum": [
+              "rainfed",
+              "irrigated",
+              "unknown"
+            ],
+            "title": "Irrigation Type",
+            "default": "irrigated"
+          },
+          "irrigation_budget_mm": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 5000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Irrigation Budget Mm",
+            "default": 240.0
+          },
+          "soil_ph": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 14.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Soil Ph",
+            "default": 6.8
+          },
+          "soil_texture": {
+            "type": "string",
+            "enum": [
+              "unknown",
+              "sand",
+              "loam",
+              "clay",
+              "other"
+            ],
+            "title": "Soil Texture",
+            "default": "loam"
+          },
+          "prior_crop_id": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Prior Crop Id",
+            "default": "wheat"
+          },
+          "lab_metrics": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LabMetricsPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "is_primary": {
+            "type": "boolean",
+            "title": "Is Primary",
+            "default": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "label",
+          "latitude",
+          "longitude"
+        ],
+        "title": "ParcelCreatePayload"
+      },
+      "ParcelUpdatePayload": {
+        "properties": {
+          "label": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160,
+                "minLength": 2
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "region_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Region Id"
+          },
+          "latitude": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 90.0,
+                "minimum": -90.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latitude"
+          },
+          "longitude": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 180.0,
+                "minimum": -180.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Longitude"
+          },
+          "area_ha": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 100000.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Area Ha"
+          },
+          "irrigation_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "rainfed",
+                  "irrigated"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Irrigation Type"
+          },
+          "irrigation_budget_mm": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 5000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Irrigation Budget Mm"
+          },
+          "soil_ph": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 14.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Soil Ph"
+          },
+          "soil_texture": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "sand",
+                  "loam",
+                  "clay",
+                  "other"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Soil Texture"
+          },
+          "prior_crop_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 60,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prior Crop Id"
+          },
+          "lab_metrics": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LabMetricsPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ParcelUpdatePayload"
       },
       "PhRange": {
         "properties": {
@@ -1122,6 +3260,48 @@
           "max_ph"
         ],
         "title": "PhRange"
+      },
+      "PlanAgronomicIndicators": {
+        "properties": {
+          "water_demand_mm_avg": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Water Demand Mm Avg"
+          },
+          "nitrogen_fixation_score": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Nitrogen Fixation Score"
+          },
+          "erosion_protection_score": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Erosion Protection Score"
+          },
+          "bare_soil_gap_months_3yr": {
+            "type": "integer",
+            "maximum": 36.0,
+            "minimum": 0.0,
+            "title": "Bare Soil Gap Months 3Yr"
+          },
+          "climate_resilience_score": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Climate Resilience Score"
+          }
+        },
+        "type": "object",
+        "required": [
+          "water_demand_mm_avg",
+          "nitrogen_fixation_score",
+          "erosion_protection_score",
+          "bare_soil_gap_months_3yr",
+          "climate_resilience_score"
+        ],
+        "title": "PlanAgronomicIndicators"
       },
       "PlanExplanation": {
         "properties": {
@@ -1232,6 +3412,193 @@
         ],
         "title": "PreferenceWeights"
       },
+      "ProfilePatchPayload": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120,
+                "minLength": 2
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 180,
+                "minLength": 5
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "region": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120,
+                "minLength": 2
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Region"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 60
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username"
+          },
+          "phone_code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone Code"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 40
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "active_since": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 30
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Since"
+          },
+          "role_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "farmer",
+                  "agronomist",
+                  "cooperative",
+                  "researcher"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role Type"
+          },
+          "irrigation_pref": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "irrigated",
+                  "rainfed",
+                  "hybrid"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Irrigation Pref"
+          },
+          "bio": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bio"
+          },
+          "avatar_data_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1500000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Data Url"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ProfilePatchPayload"
+      },
+      "RegisterPayload": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 2,
+            "title": "Name"
+          },
+          "email": {
+            "type": "string",
+            "maxLength": 180,
+            "minLength": 5,
+            "title": "Email"
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 6,
+            "title": "Password"
+          },
+          "region": {
+            "type": "string",
+            "maxLength": 120,
+            "title": "Region",
+            "default": "Ganja-Dashkasan"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "email",
+          "password"
+        ],
+        "title": "RegisterPayload"
+      },
       "RejectedSummaryItem": {
         "properties": {
           "rule_id": {
@@ -1328,6 +3695,42 @@
               "hypothetical_rainfall_stress"
             ],
             "title": "Scenario Label"
+          },
+          "indicators": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlanAgronomicIndicators"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "benefits": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Benefits"
+          },
+          "risk_factors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Risk Factors"
+          },
+          "feasible": {
+            "type": "boolean",
+            "title": "Feasible",
+            "default": true
+          },
+          "failed_rules": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Failed Rules"
           }
         },
         "type": "object",
@@ -1549,6 +3952,17 @@
             "minimum": 1.0,
             "title": "Max Plans",
             "default": 3
+          },
+          "pinned_plan_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pinned Plan Id"
           }
         },
         "additionalProperties": false,
@@ -1638,6 +4052,26 @@
             "type": "array",
             "maxItems": 3,
             "title": "Plans"
+          },
+          "baseline_practice_plan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RotationPlan"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pinned_plan_evaluation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RotationPlan"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "climate": {
             "$ref": "#/components/schemas/ClimateBundle"

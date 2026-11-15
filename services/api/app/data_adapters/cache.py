@@ -8,13 +8,25 @@ from datetime import datetime
 from pathlib import Path
 
 from app.config import PIPELINE_VERSION, Settings, ensure_runtime_dirs
-from app.data_adapters.nasa_power import NASA_POWER_DOCS_URL, NASA_POWER_PARAMETERS
-from app.data_adapters.pipeline import normalize_and_aggregate_power
-from app.schemas.models import ClimateBundle, ClimateQuery
+from app.data_adapters.nasa_power import (
+    NASA_POWER_ALL_PARAMETERS,
+    NASA_POWER_DOCS_URL,
+    NASA_POWER_PARAMETERS,
+)
+from app.data_adapters.pipeline import (
+    normalize_and_aggregate_power,
+    normalize_and_aggregate_timeseries,
+)
+from app.schemas.models import (
+    ClimateBundle,
+    ClimateQuery,
+    ClimateTimeseriesBundle,
+    ClimateTimeseriesQuery,
+)
 
 
 def compute_query_hash(
-    query: ClimateQuery,
+    query: ClimateQuery | ClimateTimeseriesQuery,
     *,
     community: str = "AG",
     parameters: tuple[str, ...] = NASA_POWER_PARAMETERS,
@@ -36,7 +48,9 @@ def compute_query_hash(
     return hashlib.sha256(encoded).hexdigest()[:16]
 
 
-def _manifest_matches_query(manifest: dict, query: ClimateQuery, community: str) -> bool:
+def _manifest_matches_query(
+    manifest: dict, query: ClimateQuery | ClimateTimeseriesQuery, community: str
+) -> bool:
     stored = manifest.get("query")
     if not isinstance(stored, dict):
         return False
@@ -50,12 +64,12 @@ def _manifest_matches_query(manifest: dict, query: ClimateQuery, community: str)
     )
 
 
-def _load_verified_pair(
+def _load_verified_raw(
     raw_path: Path,
     manifest_path: Path,
-    query: ClimateQuery,
+    query: ClimateQuery | ClimateTimeseriesQuery,
     community: str,
-) -> ClimateBundle | None:
+) -> tuple[dict, bytes, str, datetime] | None:
     if not raw_path.exists() or not manifest_path.exists():
         return None
     try:
@@ -78,7 +92,45 @@ def _load_verified_pair(
         return None
 
     retrieved_at = datetime.fromisoformat(str(retrieved_at_raw).replace("Z", "+00:00"))
-    return normalize_and_aggregate_power(
+    return raw_payload, raw_bytes, request_url, retrieved_at
+
+
+def _resolve_verified_raw(
+    query: ClimateQuery | ClimateTimeseriesQuery,
+    settings: Settings,
+) -> tuple[dict, bytes, str, datetime] | None:
+    search_plan = (
+        (settings.raw_data_dir, settings.processed_data_dir, NASA_POWER_ALL_PARAMETERS),
+        (settings.cache_dir_path, settings.cache_dir_path, NASA_POWER_ALL_PARAMETERS),
+        (settings.raw_data_dir, settings.processed_data_dir, NASA_POWER_PARAMETERS),
+        (settings.cache_dir_path, settings.cache_dir_path, NASA_POWER_PARAMETERS),
+    )
+    for raw_dir, manifest_dir, param_set in search_plan:
+        query_hash = compute_query_hash(
+            query,
+            community=settings.nasa_power_community,
+            parameters=param_set,
+        )
+        loaded = _load_verified_raw(
+            raw_dir / f"{query_hash}.json",
+            manifest_dir / f"{query_hash}.manifest.json",
+            query,
+            settings.nasa_power_community,
+        )
+        if loaded is not None:
+            return loaded
+    return None
+
+
+def load_cached_timeseries_bundle(
+    query: ClimateTimeseriesQuery, settings: Settings
+) -> ClimateTimeseriesBundle | None:
+    """Return cached ClimateTimeseriesBundle ONLY if exact query parameters and SHA-256 match."""
+    loaded = _resolve_verified_raw(query, settings)
+    if loaded is None:
+        return None
+    raw_payload, raw_bytes, request_url, retrieved_at = loaded
+    return normalize_and_aggregate_timeseries(
         raw_payload,
         raw_bytes=raw_bytes,
         request_url=request_url,
@@ -90,42 +142,43 @@ def _load_verified_pair(
 
 def load_cached_climate_bundle(query: ClimateQuery, settings: Settings) -> ClimateBundle | None:
     """Return cached ClimateBundle ONLY if exact query parameters and SHA-256 match."""
-    query_hash = compute_query_hash(query, community=settings.nasa_power_community)
-
-    # 1. Committed verified pilot snapshots (data/raw + data/processed)
-    committed_raw = settings.raw_data_dir / f"{query_hash}.json"
-    committed_manifest = settings.processed_data_dir / f"{query_hash}.manifest.json"
-    bundle = _load_verified_pair(
-        committed_raw, committed_manifest, query, settings.nasa_power_community
-    )
-    if bundle is not None:
-        return bundle
-
-    # 2. Runtime cache directory (data/cache)
-    runtime_raw = settings.cache_dir_path / f"{query_hash}.json"
-    runtime_manifest = settings.cache_dir_path / f"{query_hash}.manifest.json"
-    return _load_verified_pair(
-        runtime_raw, runtime_manifest, query, settings.nasa_power_community
+    loaded = _resolve_verified_raw(query, settings)
+    if loaded is None:
+        return None
+    raw_payload, raw_bytes, request_url, retrieved_at = loaded
+    return normalize_and_aggregate_power(
+        raw_payload,
+        raw_bytes=raw_bytes,
+        request_url=request_url,
+        retrieved_at=retrieved_at,
+        query=query,
+        data_mode="cached",
     )
 
 
 def build_snapshot_manifest(
     *,
     query_hash: str,
-    query: ClimateQuery,
+    query: ClimateQuery | ClimateTimeseriesQuery,
     community: str,
     raw_file_rel: str,
     raw_bytes: bytes,
     raw_payload: dict,
     request_url: str,
     retrieved_at: datetime,
-    bundle: ClimateBundle,
+    bundle: ClimateBundle | ClimateTimeseriesBundle,
+    parameters: tuple[str, ...] | None = None,
 ) -> dict:
     """Construct complete provenance manifest conforming to docs/DATA_RULES.md."""
     src = bundle.sources[0]
-    valid_counts = {f.feature_id: f.valid_days for f in bundle.features}
-    missing_counts = {f.feature_id: f.expected_days - f.valid_days for f in bundle.features}
-    flags = sorted({flag for f in bundle.features for flag in f.quality_flags})
+    if isinstance(bundle, ClimateBundle):
+        valid_counts = {f.feature_id: f.valid_days for f in bundle.features}
+        missing_counts = {f.feature_id: f.expected_days - f.valid_days for f in bundle.features}
+        flags = sorted({flag for f in bundle.features for flag in f.quality_flags})
+    else:
+        valid_counts = {str(a.year): a.valid_days for a in bundle.annual_series}
+        missing_counts = {str(a.year): a.expected_days - a.valid_days for a in bundle.annual_series}
+        flags = []
 
     return {
         "dataset_id": bundle.dataset_version,
@@ -146,7 +199,7 @@ def build_snapshot_manifest(
             "start": query.start_date.isoformat(),
             "end": query.end_date.isoformat(),
         },
-        "parameters": list(NASA_POWER_PARAMETERS),
+        "parameters": list(parameters or src.parameter_codes or NASA_POWER_PARAMETERS),
         "units": src.units,
         "time_standard": "UTC",
         "spatial_resolution": src.spatial_resolution,
@@ -166,17 +219,22 @@ def build_snapshot_manifest(
 
 def save_runtime_cache_snapshot(
     *,
-    query: ClimateQuery,
+    query: ClimateQuery | ClimateTimeseriesQuery,
     settings: Settings,
     raw_bytes: bytes,
     raw_payload: dict,
     request_url: str,
     retrieved_at: datetime,
-    bundle: ClimateBundle,
+    bundle: ClimateBundle | ClimateTimeseriesBundle,
+    parameters: tuple[str, ...] = NASA_POWER_PARAMETERS,
 ) -> Path:
     """Persist verified live response in runtime cache dir without touching committed snapshots."""
     ensure_runtime_dirs(settings)
-    query_hash = compute_query_hash(query, community=settings.nasa_power_community)
+    query_hash = compute_query_hash(
+        query,
+        community=settings.nasa_power_community,
+        parameters=parameters,
+    )
     raw_path = settings.cache_dir_path / f"{query_hash}.json"
     manifest_path = settings.cache_dir_path / f"{query_hash}.manifest.json"
     raw_path.write_bytes(raw_bytes)
@@ -190,6 +248,7 @@ def save_runtime_cache_snapshot(
         request_url=request_url,
         retrieved_at=retrieved_at,
         bundle=bundle,
+        parameters=parameters,
     )
     manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     return manifest_path

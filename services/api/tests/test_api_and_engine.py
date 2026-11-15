@@ -289,6 +289,231 @@ class ApiAndEngineTests(unittest.TestCase):
         p3["farm"]["soil"]["depth_cm"] = {"top": 30, "bottom": 10}
         self.assertEqual(self.client.post("/api/v1/simulations", json=p3).status_code, 422)
 
+    def test_all_four_az_regional_presets_simulate_cleanly(self) -> None:
+        presets = [
+            ("Ganja", 40.68, 46.36, "rainfed", None, "wheat"),
+            ("Aran", 40.38, 47.12, "irrigated", 220.0, "wheat"),
+            ("Quba-Khachmaz", 41.36, 48.51, "rainfed", None, "barley"),
+            ("Sheki-Zaqatala", 41.19, 47.17, "rainfed", None, "maize"),
+        ]
+        for label, lat, lon, irr, budget, prior_crop in presets:
+            payload = _base_simulation_payload()
+            payload["farm"]["label"] = label
+            payload["farm"]["location"] = {"latitude": lat, "longitude": lon, "crs": "EPSG:4326"}
+            payload["farm"]["irrigation_type"] = irr
+            payload["farm"]["irrigation_budget_mm_per_season"] = budget
+            payload["farm"]["crop_history"] = [{"year": 2024, "crop_id": prior_crop}]
+            resp = self.client.post("/api/v1/simulations", json=payload)
+            self.assertEqual(resp.status_code, 200, f"{label}: {resp.text}")
+            body = resp.json()
+            self.assertEqual(body["status"], "completed", label)
+            self.assertEqual(len(body["plans"]), 3, label)
+            self.assertNotEqual(body["plans"][0]["years"][0]["crop_id"], prior_crop, label)
+
+    def test_disallowed_predecessor_crops_enforced_across_families(self) -> None:
+        from app.data_adapters.catalog import get_crop_catalog
+        from app.engine.constraints import evaluate_sequence_constraints
+        from app.schemas.models import CropInfo, SimulationRequest
+
+        catalog = get_crop_catalog(get_settings())
+        crop_map = {c.crop_id: c.model_copy(deep=True) for c in catalog.crops}
+        # Inject cross-family disallowed predecessor: sunflower (Asteraceae) disallows maize (Poaceae)
+        custom_sunflower = CropInfo.model_validate(
+            {
+                **crop_map["sunflower"].model_dump(),
+                "predecessor_rules": {
+                    **crop_map["sunflower"].predecessor_rules.model_dump(),
+                    "disallowed_predecessor_crops": ["sunflower", "maize"],
+                },
+            }
+        )
+        req = SimulationRequest.model_validate(_base_simulation_payload())
+        res = evaluate_sequence_constraints(
+            (crop_map["maize"], custom_sunflower, crop_map["barley"]),
+            request=req,
+            effective_water_mm=650.0,
+            irrigation_unknown=False,
+            irrigation_note="rainfed_precipitation_only",
+            crop_map=crop_map,
+        )
+        self.assertFalse(res.feasible)
+        self.assertEqual(res.failed_rules[0][0], "RULE_NO_CONSECUTIVE_SENSITIVE_FAMILY")
+        self.assertIn("disallows predecessor maize", res.failed_rules[0][1])
+
+    def test_climate_timeseries_demo_fixture_and_validation(self) -> None:
+        ok = self.client.get(
+            "/api/v1/climate/timeseries",
+            params={
+                "latitude": 40.68,
+                "longitude": 46.36,
+                "start_date": "2015-01-01",
+                "end_date": "2024-12-31",
+                "mode": "demo_fixture",
+            },
+        )
+        self.assertEqual(ok.status_code, 200)
+        body = ok.json()
+        self.assertEqual(len(body["annual_series"]), 10)
+        self.assertEqual(len(body["focus_monthly_series"]), 12)
+        self.assertIsNotNone(body["trend"]["temp_shift_c_per_decade"])
+        self.assertIn(body["trend"]["drought_risk_level"], {"low", "moderate", "elevated", "unknown"})
+
+        too_long = self.client.get(
+            "/api/v1/climate/timeseries",
+            params={
+                "latitude": 40.68,
+                "longitude": 46.36,
+                "start_date": "2000-01-01",
+                "end_date": "2024-12-31",
+                "mode": "demo_fixture",
+            },
+        )
+        self.assertEqual(too_long.status_code, 422)
+
+    def test_climate_timeseries_aggregation_handles_heat_frost_dry_spell_and_missing(self) -> None:
+        from datetime import date, datetime, timedelta, timezone
+        from app.data_adapters.pipeline import normalize_and_aggregate_timeseries
+        from app.schemas.models import ClimateTimeseriesQuery
+
+        t2m, tmin, tmax, pr = {}, {}, {}, {}
+        start = date(2022, 1, 1)
+        for yr_idx, yr in enumerate((2022, 2023, 2024)):
+            cur = date(yr, 1, 1)
+            end = date(yr, 12, 31)
+            day_i = 0
+            while cur <= end:
+                key = cur.strftime("%Y%m%d")
+                t2m[key] = 10.0 + yr_idx * 1.5
+                tmin[key] = -2.0 if day_i < 10 else 12.0
+                tmax[key] = 36.5 if (200 <= day_i < 205) else 22.0
+                pr[key] = -999.0 if (day_i == 50) else (0.0 if 100 <= day_i < 130 else 2.2)
+                cur += timedelta(days=1)
+                day_i += 1
+
+        raw_payload = {
+            "geometry": {"type": "Point", "coordinates": [46.36, 40.68, 1200.0]},
+            "header": {
+                "api": {"version": "v2.10.3"},
+                "sources": ["MERRA2", "POWER"],
+                "fill_value": -999.0,
+                "time_standard": "UTC",
+            },
+            "parameters": {
+                "T2M": {"units": "C"},
+                "T2M_MIN": {"units": "C"},
+                "T2M_MAX": {"units": "C"},
+                "PRECTOTCORR": {"units": "mm/day"},
+            },
+            "properties": {
+                "parameter": {"T2M": t2m, "T2M_MIN": tmin, "T2M_MAX": tmax, "PRECTOTCORR": pr}
+            },
+        }
+        q = ClimateTimeseriesQuery(
+            latitude=40.68,
+            longitude=46.36,
+            start_date=start,
+            end_date=date(2024, 12, 31),
+        )
+        bundle = normalize_and_aggregate_timeseries(
+            raw_payload,
+            raw_bytes=json.dumps(raw_payload).encode("utf-8"),
+            request_url="https://power.larc.nasa.gov/api/temporal/daily/point",
+            retrieved_at=datetime(2026, 11, 14, tzinfo=timezone.utc),
+            query=q,
+            data_mode="live",
+        )
+        self.assertEqual(len(bundle.annual_series), 3)
+        self.assertEqual(bundle.annual_series[0].frost_days, 10)
+        self.assertEqual(bundle.annual_series[0].heat_stress_days, 5)
+        self.assertEqual(bundle.annual_series[0].max_dry_spell_days, 30)
+        self.assertEqual(bundle.annual_series[0].valid_days, 364)
+        self.assertEqual(bundle.trend.temp_shift_c_per_decade, 15.0)
+        self.assertEqual(bundle.trend.hottest_year, 2024)
+        self.assertEqual(len(bundle.focus_monthly_series), 12)
+
+    def test_simulation_returns_baseline_practice_indicators_and_pinned_stress_plan(self) -> None:
+        base_payload = _base_simulation_payload()
+        base_payload["farm"]["crop_history"] = [{"year": 2024, "crop_id": "wheat"}]
+        base_resp = self.client.post("/api/v1/simulations", json=base_payload).json()
+        self.assertEqual(base_resp["status"], "completed")
+        top_plan = base_resp["plans"][0]
+        self.assertIsNotNone(top_plan["indicators"])
+        self.assertGreater(top_plan["indicators"]["nitrogen_fixation_score"], 0.5)
+        self.assertGreater(len(top_plan["benefits"]), 0)
+
+        baseline_bench = base_resp["baseline_practice_plan"]
+        self.assertIsNotNone(baseline_bench)
+        self.assertFalse(baseline_bench["feasible"])
+        self.assertEqual([y["crop_id"] for y in baseline_bench["years"]], ["wheat", "wheat", "wheat"])
+        self.assertTrue(any("RULE_NO_CONSECUTIVE_SAME_CROP" in r for r in baseline_bench["failed_rules"]))
+
+        # Pin top plan and run severe 0.7x drought stress -> plans=[] but pinned_plan_evaluation explains why!
+        stress_payload = _base_simulation_payload()
+        stress_payload["scenario"] = {"kind": "rainfall_stress", "rainfall_multiplier": 0.7}
+        stress_payload["pinned_plan_id"] = top_plan["plan_id"]
+        stress_resp = self.client.post("/api/v1/simulations", json=stress_payload).json()
+        self.assertEqual(stress_resp["status"], "no_feasible_plan")
+        self.assertEqual(stress_resp["plans"], [])
+        pinned = stress_resp["pinned_plan_evaluation"]
+        self.assertIsNotNone(pinned)
+        self.assertEqual(pinned["plan_id"], top_plan["plan_id"])
+        self.assertFalse(pinned["feasible"])
+        self.assertTrue(any("RULE_WATER_SUPPLY_MATCH" in r for r in pinned["failed_rules"]))
+
+    def test_stage3_engine_grounds_extended_wetness_and_irradiance_without_score_drift(self) -> None:
+        from app.data_adapters.catalog import get_crop_catalog
+        from app.data_adapters.provider import get_climate_features
+        from app.engine.planner import run_simulation
+        from app.schemas.models import ClimateQuery, SimulationRequest
+        import asyncio
+
+        settings = get_settings()
+        query = ClimateQuery(
+            latitude=40.68,
+            longitude=46.36,
+            start_date="2024-01-01",
+            end_date="2024-12-31",
+            time_standard="UTC",
+        )
+        base_climate = asyncio.run(get_climate_features(query, mode_override="cached", settings=settings))
+        ext_climate = base_climate.model_copy(deep=True)
+        tmpl = ext_climate.features[0]
+        ext_climate.features = [
+            f for f in ext_climate.features
+            if f.feature_id not in {
+                "mean_surface_soil_wetness",
+                "mean_root_zone_soil_wetness",
+                "mean_solar_irradiance_mj_m2_day",
+            }
+        ]
+        base_only = base_climate.model_copy(deep=True)
+        base_only.features = [
+            f for f in base_only.features
+            if f.feature_id not in {
+                "mean_surface_soil_wetness",
+                "mean_root_zone_soil_wetness",
+                "mean_solar_irradiance_mj_m2_day",
+            }
+        ]
+        ext_climate.features.extend([
+            tmpl.model_copy(update={"feature_id": "mean_surface_soil_wetness", "value": 0.41, "unit": "1", "parameter_codes": ["GWETTOP"]}),
+            tmpl.model_copy(update={"feature_id": "mean_root_zone_soil_wetness", "value": 0.42, "unit": "1", "parameter_codes": ["GWETROOT"]}),
+            tmpl.model_copy(update={"feature_id": "mean_solar_irradiance_mj_m2_day", "value": 16.8, "unit": "MJ/m^2/day", "parameter_codes": ["ALLSKY_SFC_SW_DWN"]}),
+        ])
+
+        catalog = get_crop_catalog(settings)
+        req = SimulationRequest.model_validate(_base_simulation_payload())
+        sim_base = run_simulation(req, base_only, catalog)
+        sim_ext = run_simulation(req, ext_climate, catalog)
+
+        self.assertEqual(sim_base.plans[0].plan_id, sim_ext.plans[0].plan_id)
+        self.assertEqual(sim_base.plans[0].score, sim_ext.plans[0].score)
+        water_exp = sim_ext.plans[0].explanations[0]
+        self.assertIn("mean_root_zone_soil_wetness", water_exp.feature_ids)
+        self.assertIn("mean_solar_irradiance_mj_m2_day", water_exp.feature_ids)
+        self.assertIn("root-zone wetness 0.42", water_exp.text)
+        self.assertTrue(any("root-zone soil wetness" in r for r in sim_ext.plans[0].risk_factors))
+
 
 if __name__ == "__main__":
     unittest.main()
