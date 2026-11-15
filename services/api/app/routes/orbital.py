@@ -411,32 +411,47 @@ async def _resolve_short_maps_url(short_url: str) -> tuple[str, tuple[float, flo
     return current_url, _parse_coords_from_map_url(current_url)
 
 
-def _match_az_districts(query: str, limit: int = 5) -> list[dict[str, Any]]:
+def _match_field_tier(q_fold: str, candidate: str) -> int | None:
+    if not candidate:
+        return None
+    if candidate == q_fold:
+        return 0
+    if candidate.startswith(q_fold):
+        return 1
+    if f" {q_fold}" in candidate or f"-{q_fold}" in candidate or f"/{q_fold}" in candidate:
+        return 2
+    return None
+
+
+def _score_az_districts(query: str, limit: int = 5) -> list[tuple[int, dict[str, Any]]]:
     q_fold = _fold_search_text(query)
     if len(q_fold) < 2:
         return []
 
     scored: list[tuple[int, dict[str, Any]]] = []
     for d in AZ_DISTRICTS:
-        fields = [
+        name_candidates = (
             _fold_search_text(d["name_en"]),
             _fold_search_text(d["name_az"]),
             _fold_search_text(d["id"]),
+        )
+        region_candidates = (
             _fold_search_text(d["economic_region_en"]),
             _fold_search_text(d["economic_region_az"]),
-        ]
+        )
         best = 99
-        for idx, candidate in enumerate(fields):
-            if not candidate:
-                continue
-            if candidate == q_fold:
-                best = min(best, 0 if idx < 2 else 1)
-            elif candidate.startswith(q_fold):
-                best = min(best, 1 if idx < 2 else 2)
-            elif f" {q_fold}" in candidate or f"-{q_fold}" in candidate:
-                best = min(best, 2)
-            elif q_fold in candidate:
-                best = min(best, 3)
+        for candidate in name_candidates:
+            tier = _match_field_tier(q_fold, candidate)
+            if tier is not None:
+                best = min(best, tier)
+
+        # Economic region only acts as a fallback tier below direct city/district matches,
+        # and mid-word substrings are never matched (e.g. "ankara" must not hit "lankaran-astara").
+        if best > 2:
+            for candidate in region_candidates:
+                tier = _match_field_tier(q_fold, candidate)
+                if tier is not None:
+                    best = min(best, 4 + tier)
 
         if best < 99:
             scored.append(
@@ -461,7 +476,37 @@ def _match_az_districts(query: str, limit: int = 5) -> list[dict[str, Any]]:
             )
 
     scored.sort(key=lambda pair: (pair[0], pair[1]["name"]))
-    return [item for _, item in scored[:limit]]
+    return scored[:limit]
+
+
+def _match_az_districts(query: str, limit: int = 5) -> list[dict[str, Any]]:
+    return [item for _, item in _score_az_districts(query, limit=limit)]
+
+
+def _merge_geocode_hits(
+    az_scored: list[tuple[int, dict[str, Any]]],
+    om_hits: list[dict[str, Any]],
+    limit: int = 8,
+) -> list[dict[str, Any]]:
+    az_exact = [item for score, item in az_scored if score == 0]
+    az_prefix = [item for score, item in az_scored if 1 <= score <= 2]
+    az_region = [item for score, item in az_scored if score >= 4]
+
+    merged: list[dict[str, Any]] = []
+
+    def _append_unique(items: list[dict[str, Any]]) -> None:
+        for hit in items:
+            if len(merged) >= limit:
+                return
+            if any(math.hypot(existing["lat"] - hit["lat"], existing["lon"] - hit["lon"]) < 0.08 for existing in merged):
+                continue
+            merged.append(hit)
+
+    _append_unique(az_exact)
+    _append_unique(om_hits)
+    _append_unique(az_prefix)
+    _append_unique(az_region)
+    return merged[:limit]
 
 
 async def _fetch_open_meteo_geocode(query: str, count: int = 6) -> tuple[list[dict[str, Any]], bool]:
@@ -615,14 +660,9 @@ async def geocode_orbital_location(
                 detail="Only allowlisted Google Maps share links or map URLs with coordinates are accepted.",
             )
 
-    az_hits = _match_az_districts(raw_query, limit=5)
+    az_scored = _score_az_districts(raw_query, limit=5)
     om_hits, om_ok = await _fetch_open_meteo_geocode(raw_query, count=6)
-
-    merged: list[dict[str, Any]] = list(az_hits)
-    for hit in om_hits:
-        if any(math.hypot(existing["lat"] - hit["lat"], existing["lon"] - hit["lon"]) < 0.08 for existing in merged):
-            continue
-        merged.append(hit)
+    merged = _merge_geocode_hits(az_scored, om_hits, limit=8)
 
     payload = {
         "query": raw_query,

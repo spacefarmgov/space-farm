@@ -1094,5 +1094,119 @@ class WorkspaceApiTests(unittest.TestCase):
                 )
                 self.assertEqual(evil_resp.status_code, 400, evil_resp.text)
 
+    def test_orbital_geocode_ranking_no_midword_false_positives(self) -> None:
+        from unittest.mock import AsyncMock, patch
+        from app.routes import orbital as orbital_routes
+
+        orbital_routes._GEOCODE_CACHE.clear()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store = SpaceFarmStore(Settings(data_dir=tmp))
+            app = create_app()
+            app.dependency_overrides[_get_store] = lambda: store
+            with TestClient(app) as client:
+                # 1. "Ankara" must NEVER match "Lankaran-Astara" mid-word substring; TR Ankara must be #1
+                mock_ankara = [
+                    {
+                        "id": "om:323786",
+                        "name": "Ankara",
+                        "name_az": None,
+                        "admin1": "Ankara",
+                        "admin1_az": None,
+                        "country": "Republic of Türkiye",
+                        "country_code": "TR",
+                        "lat": 39.91987,
+                        "lon": 32.85427,
+                        "elevation_m": 850.0,
+                        "population": 3517182,
+                        "preset_id": None,
+                        "source": "open_meteo",
+                    },
+                    {
+                        "id": "om:3204772",
+                        "name": "Ankaran",
+                        "name_az": None,
+                        "admin1": "Ankaran",
+                        "admin1_az": None,
+                        "country": "Slovenia",
+                        "country_code": "SI",
+                        "lat": 45.57861,
+                        "lon": 13.73611,
+                        "elevation_m": 16.0,
+                        "population": 3278,
+                        "preset_id": None,
+                        "source": "open_meteo",
+                    },
+                ]
+                with patch(
+                    "app.routes.orbital._fetch_open_meteo_geocode",
+                    new=AsyncMock(return_value=(mock_ankara, True)),
+                ):
+                    ank_resp = client.get("/api/orbital/geocode", params={"q": "Ankara"})
+                    self.assertEqual(ank_resp.status_code, 200, ank_resp.text)
+                    ank_body = ank_resp.json()
+                    self.assertEqual(ank_body["results"][0]["name"], "Ankara")
+                    self.assertEqual(ank_body["results"][0]["country_code"], "TR")
+                    self.assertFalse(
+                        any(r["source"] == "az_district" for r in ank_body["results"]),
+                        f"Unexpected AZ district false positive for Ankara: {ank_body['results']}",
+                    )
+
+                # 2. City query "Ganja" must rank global city above Ganja-Dashkasan economic-region districts
+                mock_ganja = [
+                    {
+                        "id": "om:586523",
+                        "name": "Ganja",
+                        "name_az": None,
+                        "admin1": "Ganja",
+                        "admin1_az": None,
+                        "country": "Azerbaijan",
+                        "country_code": "AZ",
+                        "lat": 40.6828,
+                        "lon": 46.3606,
+                        "elevation_m": 408.0,
+                        "population": 335600,
+                        "preset_id": None,
+                        "source": "open_meteo",
+                    }
+                ]
+                with patch(
+                    "app.routes.orbital._fetch_open_meteo_geocode",
+                    new=AsyncMock(return_value=(mock_ganja, True)),
+                ):
+                    g_resp = client.get("/api/orbital/geocode", params={"q": "Ganja"})
+                    self.assertEqual(g_resp.status_code, 200, g_resp.text)
+                    g_body = g_resp.json()
+                    self.assertEqual(g_body["results"][0]["name"], "Ganja")
+                    self.assertEqual(g_body["results"][0]["source"], "open_meteo")
+
+                # 3. Exact AZ district query ("Astara") still keeps az:astara at #1
+                mock_astara_om = [
+                    {
+                        "id": "om:148303",
+                        "name": "Astara",
+                        "name_az": None,
+                        "admin1": "Astara",
+                        "admin1_az": None,
+                        "country": "Azerbaijan",
+                        "country_code": "AZ",
+                        "lat": 38.456,
+                        "lon": 48.875,
+                        "elevation_m": -22.0,
+                        "population": 15190,
+                        "preset_id": None,
+                        "source": "open_meteo",
+                    }
+                ]
+                with patch(
+                    "app.routes.orbital._fetch_open_meteo_geocode",
+                    new=AsyncMock(return_value=(mock_astara_om, True)),
+                ):
+                    a_resp = client.get("/api/orbital/geocode", params={"q": "Astara"})
+                    self.assertEqual(a_resp.status_code, 200, a_resp.text)
+                    a_body = a_resp.json()
+                    self.assertEqual(a_body["results"][0]["preset_id"], "astara")
+                    self.assertEqual(a_body["results"][0]["source"], "az_district")
+
 
 

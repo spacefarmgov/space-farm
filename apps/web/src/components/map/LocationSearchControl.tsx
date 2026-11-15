@@ -47,6 +47,8 @@ export const LocationSearchControl: React.FC<LocationSearchControlProps> = ({
   const rootRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const debounceTimerRef = useRef<number | null>(null);
+  const resultsQueryRef = useRef<string>("");
   const suppressNextSearchRef = useRef(false);
 
   const [query, setQuery] = useState("");
@@ -78,6 +80,10 @@ export const LocationSearchControl: React.FC<LocationSearchControlProps> = ({
   }, [statusNote]);
 
   useEffect(() => {
+    if (debounceTimerRef.current !== null) {
+      window.clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
     if (suppressNextSearchRef.current) {
       suppressNextSearchRef.current = false;
       return;
@@ -85,7 +91,9 @@ export const LocationSearchControl: React.FC<LocationSearchControlProps> = ({
     const trimmed = query.trim();
     if (!trimmed) {
       abortRef.current?.abort();
+      resultsQueryRef.current = "";
       setResults([]);
+      setActiveIndex(-1);
       setLoading(false);
       setOpen(false);
       setStatusNote(null);
@@ -95,15 +103,19 @@ export const LocationSearchControl: React.FC<LocationSearchControlProps> = ({
     const parsed = parseCoordinateOrMapLink(trimmed);
     if (parsed.kind === "coordinates") {
       abortRef.current?.abort();
+      resultsQueryRef.current = "";
       setLoading(false);
       setResults([]);
+      setActiveIndex(-1);
       setStatusNote(null);
       return;
     }
     if (parsed.kind === "invalid") {
       abortRef.current?.abort();
+      resultsQueryRef.current = "";
       setLoading(false);
       setResults([]);
+      setActiveIndex(-1);
       setStatusNote({
         tone: "error",
         text:
@@ -119,27 +131,39 @@ export const LocationSearchControl: React.FC<LocationSearchControlProps> = ({
     }
     if (parsed.kind === "short_url") {
       abortRef.current?.abort();
+      resultsQueryRef.current = "";
       setResults([]);
+      setActiveIndex(-1);
       setStatusNote(null);
       return;
     }
 
     const searchStr = parsed.query;
-    if (searchStr.length < 2) {
+    const qFold = foldSearchText(searchStr);
+    if (qFold.length < 2) {
+      resultsQueryRef.current = "";
       setResults([]);
+      setActiveIndex(-1);
       setLoading(false);
       return;
     }
 
-    // Immediate local AZ hits while global geocoder debounces
+    // Show instant AZ hints ONLY while debouncing, without pre-selecting index 0
+    // so fast Enter still resolves against full global geocoding.
     const instantAz = searchLocalAzDistricts(searchStr, 4);
     if (instantAz.length > 0) {
+      resultsQueryRef.current = "__preliminary__";
       setResults(instantAz);
-      setActiveIndex(0);
+      setActiveIndex(-1);
       setOpen(true);
+    } else if (resultsQueryRef.current !== qFold) {
+      resultsQueryRef.current = "";
+      setResults([]);
+      setActiveIndex(-1);
     }
 
     const timer = window.setTimeout(async () => {
+      debounceTimerRef.current = null;
       abortRef.current?.abort();
       const ctrl = new AbortController();
       abortRef.current = ctrl;
@@ -148,6 +172,7 @@ export const LocationSearchControl: React.FC<LocationSearchControlProps> = ({
       try {
         const res = await searchGlobalLocations(searchStr, apiBaseUrl, ctrl.signal);
         if (ctrl.signal.aborted) return;
+        resultsQueryRef.current = qFold;
         setResults(res.results);
         setActiveIndex(res.results.length > 0 ? 0 : -1);
         setOpen(true);
@@ -167,14 +192,23 @@ export const LocationSearchControl: React.FC<LocationSearchControlProps> = ({
         }
       }
     }, 280);
+    debounceTimerRef.current = timer;
 
     return () => {
-      window.clearTimeout(timer);
+      if (debounceTimerRef.current !== null) {
+        window.clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
     };
   }, [query, apiBaseUrl, isAz]);
 
   function commitSelection(sel: LocationSearchSelection) {
+    if (debounceTimerRef.current !== null) {
+      window.clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
     abortRef.current?.abort();
+    resultsQueryRef.current = "";
     setLoading(false);
     onSelectLocation(sel);
     setOpen(false);
@@ -276,14 +310,25 @@ export const LocationSearchControl: React.FC<LocationSearchControlProps> = ({
     // Place query submitted via Enter / Go button (do not auto-jump on plain text paste unless Enter)
     if (fromAutoPaste) return;
 
-    const chosen = activeIndex >= 0 && results[activeIndex] ? results[activeIndex] : results[0];
-    if (chosen) {
-      handleSelectResult(chosen);
+    const cleanQ = parsed.query;
+    const cleanFold = foldSearchText(cleanQ);
+    if (cleanFold.length < 2) return;
+
+    // Commit immediately only when user explicitly selected an item via arrow keys
+    // or when results have already resolved for this exact query.
+    if (activeIndex >= 0 && results[activeIndex]) {
+      handleSelectResult(results[activeIndex]);
+      return;
+    }
+    if (resultsQueryRef.current === cleanFold && results.length > 0) {
+      handleSelectResult(results[0]);
       return;
     }
 
-    const cleanQ = parsed.query;
-    if (cleanQ.length < 2) return;
+    if (debounceTimerRef.current !== null) {
+      window.clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
     abortRef.current?.abort();
     const ctrl = new AbortController();
     abortRef.current = ctrl;
@@ -291,8 +336,14 @@ export const LocationSearchControl: React.FC<LocationSearchControlProps> = ({
     try {
       const res = await searchGlobalLocations(cleanQ, apiBaseUrl, ctrl.signal);
       if (ctrl.signal.aborted) return;
-      if (res.results.length === 1 || foldSearchText(res.results[0]?.name ?? "") === foldSearchText(cleanQ)) {
-        handleSelectResult(res.results[0]);
+      resultsQueryRef.current = cleanFold;
+      const top = res.results[0];
+      const topExactMatch =
+        top &&
+        (foldSearchText(top.name) === cleanFold ||
+          (top.nameAz ? foldSearchText(top.nameAz) === cleanFold : false));
+      if (res.results.length === 1 || topExactMatch) {
+        handleSelectResult(top);
       } else {
         setResults(res.results);
         setActiveIndex(res.results.length > 0 ? 0 : -1);
@@ -408,8 +459,10 @@ export const LocationSearchControl: React.FC<LocationSearchControlProps> = ({
             type="button"
             className="sf-loc-search-clear"
             onClick={() => {
+              resultsQueryRef.current = "";
               setQuery("");
               setResults([]);
+              setActiveIndex(-1);
               setOpen(false);
               setStatusNote(null);
               inputRef.current?.focus();

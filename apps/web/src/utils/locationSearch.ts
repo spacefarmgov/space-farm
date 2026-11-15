@@ -483,28 +483,53 @@ export function parseCoordinateOrMapLink(rawInput: string): ParsedLocationInput 
   return { kind: "place_query", query: normalized };
 }
 
-export function searchLocalAzDistricts(query: string, limit = 5): GlobalGeocodeResult[] {
+function matchFieldTier(qFold: string, candidate: string): number | null {
+  if (!candidate) return null;
+  if (candidate === qFold) return 0;
+  if (candidate.startsWith(qFold)) return 1;
+  if (
+    candidate.includes(` ${qFold}`) ||
+    candidate.includes(`-${qFold}`) ||
+    candidate.includes(`/${qFold}`)
+  ) {
+    return 2;
+  }
+  return null;
+}
+
+interface ScoredAzDistrict {
+  score: number;
+  item: GlobalGeocodeResult;
+}
+
+function scoreLocalAzDistricts(query: string, limit = 5): ScoredAzDistrict[] {
   const qFold = foldSearchText(query);
   if (qFold.length < 2) return [];
 
-  const scored: Array<{ score: number; item: GlobalGeocodeResult }> = [];
+  const scored: ScoredAzDistrict[] = [];
   for (const d of AZ_DISTRICTS) {
-    const candidates = [
+    const nameCandidates = [
       foldSearchText(d.nameEn),
       foldSearchText(d.nameAz),
       foldSearchText(d.id),
+    ];
+    const regionCandidates = [
       foldSearchText(d.economicRegionEn),
       foldSearchText(d.economicRegionAz),
     ];
 
     let best = 99;
-    for (let i = 0; i < candidates.length; i++) {
-      const c = candidates[i];
-      if (!c) continue;
-      if (c === qFold) best = Math.min(best, i < 2 ? 0 : 1);
-      else if (c.startsWith(qFold)) best = Math.min(best, i < 2 ? 1 : 2);
-      else if (c.includes(` ${qFold}`) || c.includes(`-${qFold}`)) best = Math.min(best, 2);
-      else if (c.includes(qFold)) best = Math.min(best, 3);
+    for (const c of nameCandidates) {
+      const tier = matchFieldTier(qFold, c);
+      if (tier !== null) best = Math.min(best, tier);
+    }
+
+    // Region matches rank below city/district hits; mid-word substrings are never matched.
+    if (best > 2) {
+      for (const c of regionCandidates) {
+        const tier = matchFieldTier(qFold, c);
+        if (tier !== null) best = Math.min(best, 4 + tier);
+      }
     }
 
     if (best < 99) {
@@ -529,7 +554,40 @@ export function searchLocalAzDistricts(query: string, limit = 5): GlobalGeocodeR
   }
 
   scored.sort((a, b) => a.score - b.score || a.item.name.localeCompare(b.item.name));
-  return scored.slice(0, limit).map((entry) => entry.item);
+  return scored.slice(0, limit);
+}
+
+export function searchLocalAzDistricts(query: string, limit = 5): GlobalGeocodeResult[] {
+  return scoreLocalAzDistricts(query, limit).map((entry) => entry.item);
+}
+
+export function mergeGeocodeResults(
+  localScored: ScoredAzDistrict[],
+  omHits: GlobalGeocodeResult[],
+  limit = 8
+): GlobalGeocodeResult[] {
+  const azExact = localScored.filter((entry) => entry.score === 0).map((e) => e.item);
+  const azPrefix = localScored
+    .filter((entry) => entry.score >= 1 && entry.score <= 2)
+    .map((e) => e.item);
+  const azRegion = localScored.filter((entry) => entry.score >= 4).map((e) => e.item);
+
+  const merged: GlobalGeocodeResult[] = [];
+  const appendUnique = (items: GlobalGeocodeResult[]) => {
+    for (const hit of items) {
+      if (merged.length >= limit) return;
+      const duplicate = merged.some(
+        (m) => Math.hypot(m.lat - hit.lat, m.lon - hit.lon) < 0.08
+      );
+      if (!duplicate) merged.push(hit);
+    }
+  };
+
+  appendUnique(azExact);
+  appendUnique(omHits);
+  appendUnique(azPrefix);
+  appendUnique(azRegion);
+  return merged.slice(0, limit);
 }
 
 interface RawGeocodeApiResponse {
@@ -613,7 +671,8 @@ export async function searchGlobalLocations(
     return { query: trimmed, kind: "empty", sourceStatus: "local_only", results: [] };
   }
 
-  const localHits = searchLocalAzDistricts(trimmed, 4);
+  const localScored = scoreLocalAzDistricts(trimmed, 5);
+  const localHits = localScored.map((entry) => entry.item).slice(0, 4);
   try {
     const omRes = await fetch(
       `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(trimmed)}&count=6&language=en&format=json`,
@@ -647,18 +706,12 @@ export async function searchGlobalLocations(
         source: "open_meteo",
       }));
 
-      const merged = [...localHits];
-      for (const hit of omHits) {
-        const duplicate = merged.some(
-          (m) => Math.hypot(m.lat - hit.lat, m.lon - hit.lon) < 0.08
-        );
-        if (!duplicate) merged.push(hit);
-      }
+      const merged = mergeGeocodeResults(localScored, omHits, 8);
       return {
         query: trimmed,
         kind: merged.length ? "results" : "empty",
         sourceStatus: "live",
-        results: merged.slice(0, 8),
+        results: merged,
       };
     }
   } catch (err) {
