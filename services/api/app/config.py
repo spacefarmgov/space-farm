@@ -113,11 +113,13 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         origins = [item.strip() for item in self.cors_origins.split(",") if item.strip()]
-        vercel_url = os.getenv("VERCEL_URL", "").strip()
-        if vercel_url:
-            vercel_origin = vercel_url if vercel_url.startswith("http") else f"https://{vercel_url}"
-            if vercel_origin not in origins:
-                origins.append(vercel_origin)
+        for env_key in ("VERCEL_URL", "VERCEL_PROJECT_PRODUCTION_URL", "VERCEL_BRANCH_URL"):
+            raw = os.getenv(env_key, "").strip()
+            if not raw:
+                continue
+            origin = raw if raw.startswith("http") else f"https://{raw}"
+            if origin not in origins:
+                origins.append(origin)
         return origins or ["http://localhost:5173"]
 
     @property

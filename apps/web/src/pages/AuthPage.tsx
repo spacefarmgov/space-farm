@@ -93,6 +93,7 @@ export function AuthPage({ initialMode }: { initialMode: AuthRouteMode }) {
     google_client_id: envGoogleId,
     smtp_configured: false,
   });
+  const [gsiFailed, setGsiFailed] = useState(false);
 
   const [statusNotice, setStatusNotice] = useState<{
     message: string;
@@ -176,12 +177,14 @@ export function AuthPage({ initialMode }: { initialMode: AuthRouteMode }) {
           }
         },
       });
+      setGsiFailed(false);
       window.google.accounts.id.renderButton(googleBtnHostRef.current, {
         theme: "outline",
         size: "large",
         text: "continue_with",
         shape: "rectangular",
-        width: Math.min(440, Math.max(280, googleBtnHostRef.current.clientWidth || 380)),
+        locale,
+        width: Math.min(400, Math.max(240, googleBtnHostRef.current.clientWidth || 360)),
       });
     };
 
@@ -191,6 +194,10 @@ export function AuthPage({ initialMode }: { initialMode: AuthRouteMode }) {
         cancelled = true;
       };
     }
+
+    const handleScriptError = () => {
+      if (!cancelled) setGsiFailed(true);
+    };
 
     const existingScript = document.querySelector<HTMLScriptElement>(
       'script[src="https://accounts.google.com/gsi/client"]',
@@ -203,11 +210,13 @@ export function AuthPage({ initialMode }: { initialMode: AuthRouteMode }) {
       document.head.appendChild(script);
     }
     script.addEventListener("load", renderGoogleBtn);
+    script.addEventListener("error", handleScriptError);
     return () => {
       cancelled = true;
       script.removeEventListener("load", renderGoogleBtn);
+      script.removeEventListener("error", handleScriptError);
     };
-  }, [authProviders.google_client_id, establishAuthSession, mode, navigate, redirectTarget, region, registerStep, t.auth.invalidCredentials, t.auth.welcomeBack]);
+  }, [authProviders.google_client_id, establishAuthSession, locale, mode, navigate, redirectTarget, region, registerStep, t.auth.invalidCredentials, t.auth.welcomeBack]);
 
   // Already logged in -> jump straight to Dashboard
   useEffect(() => {
@@ -661,7 +670,7 @@ export function AuthPage({ initialMode }: { initialMode: AuthRouteMode }) {
 
                 {mode !== "forgot-password" && registerStep === "form" && (
                   <>
-                    {authProviders.google_enabled ? (
+                    {authProviders.google_enabled && !gsiFailed ? (
                       <div
                         ref={googleBtnHostRef}
                         style={{ display: "flex", justifyContent: "center", minHeight: 44, marginBottom: 4 }}

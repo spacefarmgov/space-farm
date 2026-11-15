@@ -689,5 +689,53 @@ class WorkspaceApiTests(unittest.TestCase):
 
         self.assertEqual(vercel_app.title, "Space Farm API")
 
+    def test_gmail_app_password_spaces_normalized_before_smtp_login(self) -> None:
+        from app.config import Settings
+        from app.services.notifier import _send_smtp_sync, is_smtp_configured
+
+        captured: list[tuple[str, str]] = []
+
+        class _FakeSMTP:
+            def __init__(self, host: str, port: int, timeout: int = 15) -> None:
+                self.host = host
+                self.port = port
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def ehlo(self):
+                return None
+
+            def starttls(self):
+                return None
+
+            def login(self, user: str, password: str):
+                captured.append((user, password))
+
+            def send_message(self, msg):
+                return None
+
+        with patch.dict(
+            os.environ,
+            {
+                "SMTP_HOST": "smtp.gmail.com",
+                "SMTP_PORT": "587",
+                "SMTP_USE_TLS": "true",
+                "SMTP_USER": "space.farm.gov@gmail.com",
+                "SMTP_PASSWORD": "abcd efgh ijkl mnop",
+            },
+            clear=False,
+        ):
+            cfg = Settings()
+            self.assertTrue(is_smtp_configured(cfg))
+            with patch("app.services.notifier.smtplib.SMTP", _FakeSMTP):
+                _send_smtp_sync(cfg, "farmer@example.com", "OTP", "Code: 123456")
+
+        self.assertEqual(captured, [("space.farm.gov@gmail.com", "abcdefghijklmnop")])
+
+
 
 

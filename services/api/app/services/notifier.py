@@ -43,6 +43,14 @@ def normalize_e164_phone(phone_code: str | None, phone: str | None) -> str:
     return f"+{code_digits}{local_digits}"
 
 
+def _normalized_smtp_password(settings: Settings) -> str:
+    """Normalize SMTP password and strip spaces in Gmail App Passwords."""
+    password = settings.smtp_password.strip()
+    if "gmail.com" in settings.smtp_host.lower():
+        password = password.replace(" ", "")
+    return password
+
+
 def _send_smtp_sync(
     settings: Settings,
     recipient_email: str,
@@ -55,12 +63,18 @@ def _send_smtp_sync(
     msg["Subject"] = subject
     msg.set_content(body_text)
 
+    smtp_user = settings.smtp_user.strip()
+    smtp_password = _normalized_smtp_password(settings)
+
+    def _authenticate_and_send(server: smtplib.SMTP) -> None:
+        if smtp_user and smtp_password:
+            server.login(smtp_user, smtp_password)
+        server.send_message(msg)
+
     if settings.smtp_port == 465:
         with smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port, timeout=15) as server:
             server.ehlo()
-            if settings.smtp_user and settings.smtp_password:
-                server.login(settings.smtp_user, settings.smtp_password)
-            server.send_message(msg)
+            _authenticate_and_send(server)
         return
 
     with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=15) as server:
@@ -68,9 +82,7 @@ def _send_smtp_sync(
         if settings.smtp_use_tls:
             server.starttls()
             server.ehlo()
-        if settings.smtp_user and settings.smtp_password:
-            server.login(settings.smtp_user, settings.smtp_password)
-        server.send_message(msg)
+        _authenticate_and_send(server)
 
 
 def is_smtp_configured(settings: Settings) -> bool:
@@ -79,7 +91,7 @@ def is_smtp_configured(settings: Settings) -> bool:
     if not host:
         return False
     user = settings.smtp_user.strip()
-    password = settings.smtp_password.strip()
+    password = _normalized_smtp_password(settings)
     if user and not password:
         return False
     if "gmail.com" in host.lower() and not (user and password):
