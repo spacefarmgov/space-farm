@@ -17,6 +17,7 @@ import { AZ_DISTRICTS, findAzDistrict } from "../data/azDistricts";
 import { AppShell } from "../components/layout/AppShell";
 import { useSpaceFarm } from "../context/SpaceFarmContext";
 import type { IrrigationType, SoilTexture } from "../api/types";
+import { formatLatLon } from "../utils/locationSearch";
 
 const PHONE_CODES = ["AZ +994", "TR +90", "GE +995", "DE +49", "US +1"];
 
@@ -703,7 +704,7 @@ export function ProfilePage() {
                   <div>
                     <strong>{parcel.label}</strong>
                     <span className="mono">
-                      {parcel.latitude.toFixed(4)}°N, {parcel.longitude.toFixed(4)}°E ·{" "}
+                      {formatLatLon(parcel.latitude, parcel.longitude, 4)} ·{" "}
                       {parcel.area_ha} ha
                     </span>
                   </div>

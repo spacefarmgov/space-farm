@@ -201,6 +201,7 @@ export interface WorkspaceParcel {
   soil_texture: "unknown" | "sand" | "loam" | "clay" | "other";
   prior_crop_id: string;
   lab_metrics?: WorkspaceLabMetrics;
+  boundary_polygon?: Array<[number, number]> | null;
   is_primary: boolean;
   created_at: string;
 }
@@ -374,6 +375,7 @@ export function createFarmParcel(
     soil_texture: "unknown" | "sand" | "loam" | "clay" | "other";
     prior_crop_id: string;
     lab_metrics?: WorkspaceLabMetrics;
+    boundary_polygon?: Array<[number, number]> | null;
     is_primary: boolean;
   },
 ): Promise<{ parcels: WorkspaceParcel[] }> {
@@ -402,6 +404,7 @@ export function updateFarmParcel(
     soil_texture: "sand" | "loam" | "clay" | "other";
     prior_crop_id: string;
     lab_metrics: WorkspaceLabMetrics;
+    boundary_polygon: Array<[number, number]> | null;
   }>,
 ): Promise<{ parcels: WorkspaceParcel[] }> {
   return requestWorkspaceJson<{ parcels: WorkspaceParcel[] }>(

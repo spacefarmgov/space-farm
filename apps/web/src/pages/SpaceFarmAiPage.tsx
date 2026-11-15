@@ -22,6 +22,7 @@ import { getClimateFeatureValue, toSimulationRequest } from "../data/regions";
 import { formatLocaleNumber } from "../locales/translations";
 import { AppShell } from "../components/layout/AppShell";
 import { useSpaceFarm } from "../context/SpaceFarmContext";
+import { formatLatLon } from "../utils/locationSearch";
 
 function renderFormattedText(content: string) {
   const blocks = content.split(/\n{2,}/);
@@ -241,7 +242,7 @@ export function SpaceFarmAiPage() {
                   <span>{ai.contextField}</span>
                   <strong>{draft.label}</strong>
                   <small className="mono">
-                    {draft.latitude.toFixed(2)}°N, {draft.longitude.toFixed(2)}°E · {draft.areaHa} ha
+                    {formatLatLon(draft.latitude, draft.longitude, 2)} · {draft.areaHa} ha
                   </small>
                 </div>
               </div>

@@ -218,6 +218,7 @@ export interface FieldDraft {
   farmId: string;
   label: string;
   hasBoundary: boolean;
+  boundaryPolygon: Array<[number, number]> | null;
   latitude: number;
   longitude: number;
   areaHa: number;
@@ -248,6 +249,9 @@ export function createDraftFromRegion(region: VerifiedRegionPreset): FieldDraft 
     farmId: region.farmId,
     label: region.nameEn,
     hasBoundary: region.hasBoundary,
+    boundaryPolygon: region.illustrativePolygon
+      ? region.illustrativePolygon.map(([lat, lon]) => [lat, lon] as [number, number])
+      : null,
     latitude: region.latitude,
     longitude: region.longitude,
     areaHa: region.areaHa,

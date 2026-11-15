@@ -11,6 +11,7 @@ import {
   getClimateFeatureValue,
 } from "../data/regions";
 import { formatLocaleDateTime, formatLocaleNumber } from "../locales/translations";
+import { formatLatLon } from "../utils/locationSearch";
 
 export function ClimateHistoryPage() {
   const {
@@ -120,7 +121,7 @@ export function ClimateHistoryPage() {
 
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <span className="sf-badge">
-              {draft.label} ({draft.latitude.toFixed(2)}°N, {draft.longitude.toFixed(2)}°E)
+              {draft.label} ({formatLatLon(draft.latitude, draft.longitude, 2)})
             </span>
             <span className="sf-badge sf-badge-cyan">
               {t.badges.historicalData} · {DEFAULT_CLIMATE_PERIOD.start_date} → {DEFAULT_CLIMATE_PERIOD.end_date} (UTC)

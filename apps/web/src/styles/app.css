@@ -1761,6 +1761,16 @@ textarea:focus-visible,
   font-family: var(--font-sans);
 }
 
+.sf-vertex-handle {
+  width: 14px !important;
+  height: 14px !important;
+  border-radius: 50%;
+  background: #e9d5ff;
+  border: 2.5px solid #7c3aed;
+  box-shadow: 0 0 12px rgba(168, 85, 247, 0.95);
+  cursor: move;
+}
+
 .leaflet-control-zoom a {
   background: rgba(16, 16, 28, 0.92) !important;
   color: var(--text-primary) !important;

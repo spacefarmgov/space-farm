@@ -54,6 +54,7 @@ function matchNearestAzDistrict(lat: number, lon: number) {
 export const OrbitalEarthModule: React.FC<OrbitalEarthModuleProps> = ({
   initialLat = 40.68,
   initialLon = 46.36,
+  initialPolygon = null,
   language: initialLang = "en",
   apiBaseUrl = "",
   onLocationSelect,
@@ -79,15 +80,19 @@ export const OrbitalEarthModule: React.FC<OrbitalEarthModuleProps> = ({
   );
   const [customLabel, setCustomLabel] = useState<string | null>(null);
   const [polygon, setPolygon] = useState<Array<[number, number]>>(() =>
-    initialPreset && Math.hypot(initialPreset.lat - initialLat, initialPreset.lon - initialLon) < 0.08
-      ? initialPreset.polygon
-      : buildParcelAroundPoint(initialLat, initialLon)
+    initialPolygon && initialPolygon.length >= 3
+      ? initialPolygon
+      : initialPreset && Math.hypot(initialPreset.lat - initialLat, initialPreset.lon - initialLon) < 0.08
+        ? initialPreset.polygon
+        : buildParcelAroundPoint(initialLat, initialLon)
   );
   const [areaHa, setAreaHa] = useState<number>(() =>
     computeGeodesicAreaHa(
-      initialPreset && Math.hypot(initialPreset.lat - initialLat, initialPreset.lon - initialLon) < 0.08
-        ? initialPreset.polygon
-        : buildParcelAroundPoint(initialLat, initialLon)
+      initialPolygon && initialPolygon.length >= 3
+        ? initialPolygon
+        : initialPreset && Math.hypot(initialPreset.lat - initialLat, initialPreset.lon - initialLon) < 0.08
+          ? initialPreset.polygon
+          : buildParcelAroundPoint(initialLat, initialLon)
     )
   );
 

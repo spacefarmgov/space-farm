@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import L from "leaflet";
 import { NASA_GIBS_LAYER_MAP, type GibsLayerId } from "../../data/gibsLayers";
 import {
@@ -7,11 +7,21 @@ import {
   type VerifiedRegionPreset,
 } from "../../data/regions";
 import { AZ_DISTRICTS } from "../../data/azDistricts";
+import {
+  buildParcelAroundPoint,
+  computeGeodesicAreaHa,
+  computePolygonCentroid,
+  splitLongestPolygonEdge,
+  type LatLonTuple,
+} from "../../utils/polygonMetrics";
 
 interface SatelliteFieldMapProps {
   latitude: number;
   longitude: number;
   selectedRegion: VerifiedRegionPreset | null;
+  locale?: "az" | "en";
+  boundaryPolygon?: LatLonTuple[] | null;
+  areaHa?: number;
   showIllustrativeBoundary?: boolean;
   interactiveClick?: boolean;
   zoom?: number;
@@ -20,12 +30,20 @@ interface SatelliteFieldMapProps {
   overlayOpacity?: number;
   onPickCoordinate?: (lat: number, lon: number) => void;
   onSelectRegion?: (regionId: string) => void;
+  onChangePolygon?: (
+    polygon: LatLonTuple[] | null,
+    areaHa?: number,
+    centroid?: LatLonTuple,
+  ) => void;
 }
 
 export function SatelliteFieldMap({
   latitude,
   longitude,
   selectedRegion,
+  locale = "en",
+  boundaryPolygon = null,
+  areaHa,
   showIllustrativeBoundary = true,
   interactiveClick = true,
   zoom = 13,
@@ -34,11 +52,31 @@ export function SatelliteFieldMap({
   overlayOpacity = 0.72,
   onPickCoordinate,
   onSelectRegion,
+  onChangePolygon,
 }: SatelliteFieldMapProps) {
+  const isAz = locale === "az";
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const overlayGroupRef = useRef<L.LayerGroup | null>(null);
   const gibsLayerRef = useRef<L.TileLayer | null>(null);
+  const editingBoundaryRef = useRef(false);
+  const skipNextFlyRef = useRef(false);
+  const [editingBoundary, setEditingBoundary] = useState(false);
+
+  editingBoundaryRef.current = editingBoundary;
+
+  const activePolygon: LatLonTuple[] | null =
+    boundaryPolygon && boundaryPolygon.length >= 3
+      ? boundaryPolygon
+      : showIllustrativeBoundary && selectedRegion?.illustrativePolygon
+        ? selectedRegion.illustrativePolygon.map(([lat, lon]) => [lat, lon] as LatLonTuple)
+        : null;
+
+  useEffect(() => {
+    if (!activePolygon && editingBoundary) {
+      setEditingBoundary(false);
+    }
+  }, [activePolygon, editingBoundary]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -73,6 +111,7 @@ export function SatelliteFieldMap({
 
     if (interactiveClick && onPickCoordinate) {
       map.on("click", (ev: L.LeafletMouseEvent) => {
+        if (editingBoundaryRef.current) return;
         onPickCoordinate(
           Number(ev.latlng.lat.toFixed(4)),
           Number(ev.latlng.lng.toFixed(4)),
@@ -126,6 +165,10 @@ export function SatelliteFieldMap({
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
+    if (skipNextFlyRef.current) {
+      skipNextFlyRef.current = false;
+      return;
+    }
     const prefersReduced =
       typeof window !== "undefined" &&
       window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
@@ -136,7 +179,7 @@ export function SatelliteFieldMap({
         : null;
     const targetZoom = eoSpec
       ? Math.min(zoom, eoSpec.recommendedZoom)
-      : selectedRegion?.hasBoundary
+      : activePolygon
         ? Math.max(map.getZoom(), 14)
         : zoom;
     if (prefersReduced) {
@@ -146,7 +189,7 @@ export function SatelliteFieldMap({
     }
   }, [latitude, longitude, selectedRegion, zoom, earthObsOverlay]);
 
-  // Update vector layers cleanly on coordinate or preset changes
+  // Update vector layers & optional draggable corner handles
   useEffect(() => {
     const group = overlayGroupRef.current;
     if (!group) return;
@@ -170,15 +213,24 @@ export function SatelliteFieldMap({
       .bindTooltip("MERRA-2 / NASA POWER 0.5° × 0.625° grid cell")
       .addTo(group);
 
-    // 2. Mapped parcel boundary for primary regional plot
-    if (showIllustrativeBoundary && selectedRegion?.illustrativePolygon) {
-      L.polygon(selectedRegion.illustrativePolygon, {
-        color: "#a78bfa",
-        weight: 2.5,
+    // 2. Mapped or user-drawn field boundary polygon
+    let polygonLayer: L.Polygon | null = null;
+    if (activePolygon && activePolygon.length >= 3) {
+      const haDisplay =
+        typeof areaHa === "number" && areaHa > 0
+          ? areaHa.toFixed(1)
+          : computeGeodesicAreaHa(activePolygon).toFixed(1);
+      polygonLayer = L.polygon(activePolygon, {
+        color: editingBoundary ? "#c084fc" : "#a78bfa",
+        weight: editingBoundary ? 3 : 2.5,
         fillColor: "#8b5cf6",
-        fillOpacity: 0.28,
+        fillOpacity: editingBoundary ? 0.34 : 0.26,
       })
-        .bindTooltip("Ganja–Dashkasan mapped parcel (28.4 ha)")
+        .bindTooltip(
+          isAz
+            ? `Sahə sərhədi (${haDisplay} ha · ${activePolygon.length} künc)`
+            : `Field parcel boundary (${haDisplay} ha · ${activePolygon.length} corners)`,
+        )
         .addTo(group);
     }
 
@@ -199,7 +251,9 @@ export function SatelliteFieldMap({
       if (onSelectRegion) {
         marker.on("click", (e) => {
           L.DomEvent.stopPropagation(e);
-          onSelectRegion(region.id);
+          if (!editingBoundaryRef.current) {
+            onSelectRegion(region.id);
+          }
         });
       }
       marker.addTo(group);
@@ -230,13 +284,15 @@ export function SatelliteFieldMap({
       if (onSelectRegion) {
         dMarker.on("click", (e) => {
           L.DomEvent.stopPropagation(e);
-          onSelectRegion(district.id);
+          if (!editingBoundaryRef.current) {
+            onSelectRegion(district.id);
+          }
         });
       }
       dMarker.addTo(group);
     }
 
-    // 4. Custom selected point pin
+    // 4. Custom selected point pin (shown when not drawing over an active preset)
     const matchesPreset = VERIFIED_AZ_REGIONS.some(
       (r) =>
         Math.abs(r.latitude - latitude) < 0.01 &&
@@ -248,7 +304,7 @@ export function SatelliteFieldMap({
     );
     if (!matchesPreset) {
       L.circleMarker([latitude, longitude], {
-        radius: 9,
+        radius: 8,
         color: "#f6f5fb",
         weight: 2,
         fillColor: "#a78bfa",
@@ -257,7 +313,108 @@ export function SatelliteFieldMap({
         .bindTooltip(`Custom point (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`)
         .addTo(group);
     }
-  }, [latitude, longitude, selectedRegion, showIllustrativeBoundary, onSelectRegion]);
+
+    // 5. Draggable corner handles when boundary editing is enabled
+    if (editingBoundary && activePolygon && activePolygon.length >= 3 && onChangePolygon) {
+      const icon = L.divIcon({
+        className: "sf-vertex-handle",
+        iconSize: [14, 14],
+        iconAnchor: [7, 7],
+      });
+      activePolygon.forEach((pt, idx) => {
+        const handle = L.marker(pt, {
+          icon,
+          draggable: true,
+          title: isAz
+            ? "Sürüşdürün · Silmək üçün 2× klik (min 3 künc)"
+            : "Drag corner · 2× click to remove (min 3)",
+        });
+        handle.on("drag", () => {
+          if (!polygonLayer) return;
+          const ll = handle.getLatLng();
+          const preview = activePolygon.map((p, i) =>
+            i === idx
+              ? ([Number(ll.lat.toFixed(5)), Number(ll.lng.toFixed(5))] as LatLonTuple)
+              : p,
+          );
+          polygonLayer.setLatLngs(preview);
+        });
+        handle.on("dragend", () => {
+          const ll = handle.getLatLng();
+          const updated = activePolygon.map((p, i) =>
+            i === idx
+              ? ([Number(ll.lat.toFixed(5)), Number(ll.lng.toFixed(5))] as LatLonTuple)
+              : p,
+          );
+          skipNextFlyRef.current = true;
+          onChangePolygon(
+            updated,
+            computeGeodesicAreaHa(updated),
+            computePolygonCentroid(updated) ?? undefined,
+          );
+        });
+        handle.on("dblclick", (e) => {
+          L.DomEvent.stopPropagation(e);
+          if (activePolygon.length <= 3) return;
+          const trimmed = activePolygon.filter((_, i) => i !== idx);
+          skipNextFlyRef.current = true;
+          onChangePolygon(
+            trimmed,
+            computeGeodesicAreaHa(trimmed),
+            computePolygonCentroid(trimmed) ?? undefined,
+          );
+        });
+        handle.addTo(group);
+      });
+    }
+  }, [
+    latitude,
+    longitude,
+    selectedRegion,
+    boundaryPolygon,
+    areaHa,
+    showIllustrativeBoundary,
+    editingBoundary,
+    isAz,
+    onSelectRegion,
+    onChangePolygon,
+  ]);
+
+  const handleToggleBoundaryEdit = () => {
+    if (!onChangePolygon) return;
+    if (editingBoundary) {
+      setEditingBoundary(false);
+      return;
+    }
+    if (!activePolygon || activePolygon.length < 3) {
+      const starter = buildParcelAroundPoint(latitude, longitude, 0.0038);
+      const nextHa = computeGeodesicAreaHa(starter);
+      skipNextFlyRef.current = false;
+      onChangePolygon(starter, nextHa);
+      mapRef.current?.setView([latitude, longitude], Math.max(mapRef.current.getZoom(), 15), {
+        animate: true,
+      });
+    }
+    setEditingBoundary(true);
+  };
+
+  const handleAddCorner = () => {
+    if (!onChangePolygon || !activePolygon || activePolygon.length < 3) return;
+    const expanded = splitLongestPolygonEdge(activePolygon);
+    skipNextFlyRef.current = true;
+    onChangePolygon(
+      expanded,
+      computeGeodesicAreaHa(expanded),
+      computePolygonCentroid(expanded) ?? undefined,
+    );
+  };
+
+  const handleClearBoundary = () => {
+    if (!onChangePolygon) return;
+    setEditingBoundary(false);
+    skipNextFlyRef.current = true;
+    onChangePolygon(null);
+  };
 
   const handleZoomAzerbaijan = () => {
     const map = mapRef.current;
@@ -271,31 +428,94 @@ export function SatelliteFieldMap({
     );
   };
 
+  const toolbarBtnStyle = (active = false): React.CSSProperties => ({
+    background: active ? "rgba(124, 58, 237, 0.88)" : "rgba(10, 9, 24, 0.86)",
+    borderColor: active ? "rgba(216, 180, 254, 0.85)" : "rgba(103, 232, 249, 0.45)",
+    color: "#f5f3ff",
+    backdropFilter: "blur(10px)",
+    boxShadow: "0 4px 16px rgba(0, 0, 0, 0.4)",
+  });
+
   return (
     <div className="sf-map-box" style={{ height, width: "100%", position: "relative" }}>
       <div
         ref={containerRef}
         style={{ width: "100%", height: "100%", minHeight: typeof height === "number" ? height : 420 }}
       />
-      <button
-        type="button"
-        className="sf-btn sf-btn-sm"
-        onClick={handleZoomAzerbaijan}
+      <div
         style={{
           position: "absolute",
           top: 12,
           right: 12,
           zIndex: 500,
-          background: "rgba(10, 9, 24, 0.86)",
-          borderColor: "rgba(103, 232, 249, 0.45)",
-          color: "#e0f2fe",
-          backdropFilter: "blur(10px)",
-          boxShadow: "0 4px 16px rgba(0, 0, 0, 0.4)",
+          display: "flex",
+          gap: 6,
+          flexWrap: "wrap",
+          justifyContent: "flex-end",
+          maxWidth: "calc(100% - 64px)",
         }}
-        title="Fit all 67 Azerbaijan districts"
       >
-        <span>🇦🇿 67 Rayon Xəritəsi</span>
-      </button>
+        {onChangePolygon && (
+          <>
+            <button
+              type="button"
+              className="sf-btn sf-btn-sm"
+              onClick={handleToggleBoundaryEdit}
+              style={toolbarBtnStyle(editingBoundary)}
+              title={
+                isAz
+                  ? "Xəritədə tarla sərhədini çəkin və küncləri sürüşdürün"
+                  : "Draw or reshape field parcel polygon vertices on satellite map"
+              }
+            >
+              <span>
+                {editingBoundary
+                  ? isAz
+                    ? "✓ Sərhədi Tamamla"
+                    : "✓ Done Boundary"
+                  : activePolygon
+                    ? isAz
+                      ? "✎ Sərhədi Düzəlt"
+                      : "✎ Edit Boundary"
+                    : isAz
+                      ? "✎ Sərhəd Çək"
+                      : "✎ Draw Boundary"}
+              </span>
+            </button>
+            {editingBoundary && (
+              <>
+                <button
+                  type="button"
+                  className="sf-btn sf-btn-sm"
+                  onClick={handleAddCorner}
+                  style={toolbarBtnStyle(false)}
+                  title={isAz ? "Ən uzun tərəfə əlavə künc artır" : "Add vertex corner"}
+                >
+                  <span>{isAz ? "+ Künc" : "+ Corner"}</span>
+                </button>
+                <button
+                  type="button"
+                  className="sf-btn sf-btn-sm"
+                  onClick={handleClearBoundary}
+                  style={toolbarBtnStyle(false)}
+                  title={isAz ? "Xüsusi sərhədi sil" : "Clear custom boundary"}
+                >
+                  <span>{isAz ? "Sil" : "Clear"}</span>
+                </button>
+              </>
+            )}
+          </>
+        )}
+        <button
+          type="button"
+          className="sf-btn sf-btn-sm"
+          onClick={handleZoomAzerbaijan}
+          style={toolbarBtnStyle(false)}
+          title={isAz ? "Bütün 67 Azərbaycan rayonunu göstər" : "Fit all 67 Azerbaijan districts"}
+        >
+          <span>{isAz ? "🇦🇿 67 Rayon Xəritəsi" : "🇦🇿 67 Districts Map"}</span>
+        </button>
+      </div>
     </div>
   );
 }

@@ -101,6 +101,8 @@ export interface OrbitalEarthModuleProps {
   initialLat?: number;
   /** Initial focused longitude (defaults to Ganja, Azerbaijan: 46.36) */
   initialLon?: number;
+  /** Initial saved parcel boundary polygon if available */
+  initialPolygon?: Array<[number, number]> | null;
   /** Initial UI language */
   language?: "en" | "az";
   /** Optional SpaceFarm backend API base URL (e.g. "http://127.0.0.1:8000" or "") */

@@ -7,6 +7,7 @@ import { OrbitalEarthModule, type SelectedOrbitalLocation } from "../modules/orb
 import { AppShell } from "../components/layout/AppShell";
 import { useSpaceFarm } from "../context/SpaceFarmContext";
 import { formatLocaleNumber } from "../locales/translations";
+import { formatLatLon } from "../utils/locationSearch";
 
 const ORBITAL_API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 
@@ -34,7 +35,8 @@ export function OrbitalExplorerPage() {
 
   const handleLocationSelect = useCallback(
     (selection: SelectedOrbitalLocation) => {
-      const key = `${selection.lat.toFixed(4)}:${selection.lon.toFixed(4)}:${selection.presetId ?? ""}:${selection.areaHa.toFixed(1)}`;
+      const polyKey = selection.polygon?.length ?? 0;
+      const key = `${selection.lat.toFixed(4)}:${selection.lon.toFixed(4)}:${selection.presetId ?? ""}:${selection.areaHa.toFixed(1)}:${polyKey}`;
       if (lastSelectionKeyRef.current === key) return;
       lastSelectionKeyRef.current = key;
       applyOrbitalSelection(
@@ -44,6 +46,7 @@ export function OrbitalExplorerPage() {
           label: selection.label,
           presetId: selection.presetId,
           areaHa: selection.areaHa,
+          polygon: selection.polygon,
         },
         false,
       );
@@ -60,6 +63,7 @@ export function OrbitalExplorerPage() {
           label: selection.label,
           presetId: selection.presetId,
           areaHa: selection.areaHa,
+          polygon: selection.polygon,
         },
         true,
       );
@@ -82,6 +86,7 @@ export function OrbitalExplorerPage() {
           label: draft.label,
           presetId: draft.regionPresetId,
           areaHa: draft.areaHa,
+          polygon: draft.boundaryPolygon,
         },
         route !== "/field",
       );
@@ -114,7 +119,7 @@ export function OrbitalExplorerPage() {
             <div className="mono" style={{ fontSize: 12.5, color: "var(--text-secondary)" }}>
               <strong style={{ color: "var(--text-primary)" }}>{draft.label}</strong>
               {" · "}
-              {draft.latitude.toFixed(4)}°N, {draft.longitude.toFixed(4)}°E
+              {formatLatLon(draft.latitude, draft.longitude, 4)}
               {" · "}
               {formatLocaleNumber(draft.areaHa, locale, 1)} ha
             </div>
@@ -154,6 +159,7 @@ export function OrbitalExplorerPage() {
           <OrbitalEarthModule
             initialLat={draft.latitude}
             initialLon={draft.longitude}
+            initialPolygon={draft.boundaryPolygon}
             language={locale}
             apiBaseUrl={ORBITAL_API_BASE_URL}
             onLocationSelect={handleLocationSelect}

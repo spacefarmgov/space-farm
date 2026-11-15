@@ -6,6 +6,7 @@ import base64
 import hashlib
 import hmac
 import json
+import math
 import os
 import secrets
 import sqlite3
@@ -220,6 +221,7 @@ class SpaceFarmStore:
                     soil_texture TEXT NOT NULL DEFAULT 'loam',
                     prior_crop_id TEXT NOT NULL DEFAULT 'wheat',
                     lab_metrics_json TEXT NOT NULL DEFAULT '{}',
+                    boundary_polygon_json TEXT DEFAULT NULL,
                     is_primary INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL
                 );
@@ -341,6 +343,10 @@ class SpaceFarmStore:
             if "lab_metrics_json" not in cols:
                 conn.execute(
                     "ALTER TABLE farm_parcels ADD COLUMN lab_metrics_json TEXT NOT NULL DEFAULT '{}'"
+                )
+            if "boundary_polygon_json" not in cols:
+                conn.execute(
+                    "ALTER TABLE farm_parcels ADD COLUMN boundary_polygon_json TEXT DEFAULT NULL"
                 )
             # Upgrade legacy parcels seeded with NULL/unknown so all saved fields have baseline Lab chemistry
             legacy_rows = conn.execute(
@@ -836,6 +842,34 @@ class SpaceFarmStore:
         }
 
     @staticmethod
+    def _normalize_boundary_polygon(raw: Any) -> list[list[float]] | None:
+        if raw is None:
+            return None
+        if isinstance(raw, str):
+            stripped = raw.strip()
+            if not stripped:
+                return None
+            try:
+                raw = json.loads(stripped)
+            except json.JSONDecodeError:
+                return None
+        if not isinstance(raw, list) or len(raw) < 3 or len(raw) > 64:
+            return None
+        cleaned: list[list[float]] = []
+        for pt in raw:
+            if not isinstance(pt, (list, tuple)) or len(pt) != 2:
+                return None
+            try:
+                lat = float(pt[0])
+                lon = float(pt[1])
+            except (TypeError, ValueError):
+                return None
+            if not (math.isfinite(lat) and math.isfinite(lon) and -90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
+                return None
+            cleaned.append([round(lat, 5), round(lon, 5)])
+        return cleaned
+
+    @staticmethod
     def _row_to_parcel(row: sqlite3.Row) -> dict[str, Any]:
         defaults = _default_lab_profile(row["region_id"])
         raw_metrics: dict[str, Any] = {}
@@ -847,6 +881,9 @@ class SpaceFarmStore:
             except json.JSONDecodeError:
                 raw_metrics = {}
         merged_lab = {**defaults["lab_metrics"], **raw_metrics}
+        boundary_polygon: list[list[float]] | None = None
+        if "boundary_polygon_json" in row.keys():
+            boundary_polygon = SpaceFarmStore._normalize_boundary_polygon(row["boundary_polygon_json"])
         soil_ph = row["soil_ph"] if row["soil_ph"] is not None else defaults["soil_ph"]
         irrig = row["irrigation_type"] if row["irrigation_type"] != "unknown" else defaults["irrigation_type"]
         budget = row["irrigation_budget_mm"]
@@ -865,6 +902,7 @@ class SpaceFarmStore:
             "soil_texture": row["soil_texture"] if row["soil_texture"] != "unknown" else defaults["soil_texture"],
             "prior_crop_id": row["prior_crop_id"],
             "lab_metrics": merged_lab,
+            "boundary_polygon": boundary_polygon,
             "is_primary": bool(row["is_primary"]),
             "created_at": row["created_at"],
         }
@@ -1244,6 +1282,8 @@ class SpaceFarmStore:
             **lab_seed["lab_metrics"],
             **(data.get("lab_metrics") or {}),
         }
+        boundary_poly = self._normalize_boundary_polygon(data.get("boundary_polygon"))
+        boundary_poly_json = json.dumps(boundary_poly) if boundary_poly else None
         with self._connect() as conn:
             if is_primary:
                 conn.execute("UPDATE farm_parcels SET is_primary = 0 WHERE user_id = ?", (user_id,))
@@ -1252,8 +1292,8 @@ class SpaceFarmStore:
                 INSERT INTO farm_parcels (
                     id, user_id, label, region_id, latitude, longitude, area_ha,
                     irrigation_type, irrigation_budget_mm, soil_ph, soil_texture,
-                    prior_crop_id, lab_metrics_json, is_primary, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    prior_crop_id, lab_metrics_json, boundary_polygon_json, is_primary, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     parcel_id,
@@ -1269,6 +1309,7 @@ class SpaceFarmStore:
                     soil_tex,
                     str(data.get("prior_crop_id", "wheat")),
                     json.dumps(lab_metrics),
+                    boundary_poly_json,
                     is_primary,
                     now,
                 ),
@@ -1324,6 +1365,13 @@ class SpaceFarmStore:
                 merged_lab = {**prev_lab, **cleaned_lab}
                 updates.append("lab_metrics_json = ?")
                 values.append(json.dumps(merged_lab))
+            if "boundary_polygon" in data:
+                boundary_poly = self._normalize_boundary_polygon(data.get("boundary_polygon"))
+                if boundary_poly is None:
+                    updates.append("boundary_polygon_json = NULL")
+                else:
+                    updates.append("boundary_polygon_json = ?")
+                    values.append(json.dumps(boundary_poly))
             if updates:
                 values.extend([user_id, parcel_id])
                 conn.execute(

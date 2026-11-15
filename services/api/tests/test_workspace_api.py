@@ -1208,5 +1208,78 @@ class WorkspaceApiTests(unittest.TestCase):
                     self.assertEqual(a_body["results"][0]["preset_id"], "astara")
                     self.assertEqual(a_body["results"][0]["source"], "az_district")
 
+    def test_parcel_boundary_polygon_persistence_and_validation(self) -> None:
+        token, _, initial_parcels = self._register_sample()
+        headers = {"Authorization": f"Bearer {token}"}
+        polygon = [
+            [39.922, 32.851],
+            [39.924, 32.858],
+            [39.918, 32.86],
+            [39.917, 32.852],
+        ]
+
+        created = self.client.post(
+            "/api/v1/parcels",
+            headers=headers,
+            json={
+                "label": "Ankara Pilot Plot",
+                "region_id": "custom",
+                "latitude": 39.92,
+                "longitude": 32.855,
+                "area_ha": 42.6,
+                "irrigation_type": "irrigated",
+                "irrigation_budget_mm": 310.0,
+                "soil_ph": 7.1,
+                "soil_texture": "loam",
+                "prior_crop_id": "wheat",
+                "boundary_polygon": polygon,
+                "is_primary": True,
+            },
+        )
+        self.assertEqual(created.status_code, 201, created.text)
+        parcels = created.json()["parcels"]
+        self.assertEqual(parcels[0]["label"], "Ankara Pilot Plot")
+        self.assertEqual(parcels[0]["region_id"], "custom")
+        self.assertEqual(len(parcels[0]["boundary_polygon"]), 4)
+        self.assertAlmostEqual(parcels[0]["boundary_polygon"][0][0], 39.922, places=4)
+
+        new_id = parcels[0]["id"]
+        updated_poly = [
+            [39.923, 32.851],
+            [39.925, 32.859],
+            [39.918, 32.861],
+            [39.916, 32.854],
+            [39.919, 32.850],
+        ]
+        upd = self.client.put(
+            f"/api/v1/parcels/{new_id}",
+            headers=headers,
+            json={"boundary_polygon": updated_poly, "area_ha": 55.2},
+        )
+        self.assertEqual(upd.status_code, 200, upd.text)
+        self.assertEqual(len(upd.json()["parcels"][0]["boundary_polygon"]), 5)
+
+        me = self.client.get("/api/v1/profile", headers=headers)
+        self.assertEqual(me.status_code, 200)
+        self.assertEqual(len(me.json()["parcels"][0]["boundary_polygon"]), 5)
+
+        # Invalid polygon (< 3 vertices) must return 422 validation error
+        bad = self.client.put(
+            f"/api/v1/parcels/{new_id}",
+            headers=headers,
+            json={"boundary_polygon": [[39.9, 32.8], [39.91, 32.81]]},
+        )
+        self.assertEqual(bad.status_code, 422, bad.text)
+
+        # Clearing boundary_polygon via null persists cleanly
+        cleared = self.client.put(
+            f"/api/v1/parcels/{new_id}",
+            headers=headers,
+            json={"boundary_polygon": None},
+        )
+        self.assertEqual(cleared.status_code, 200, cleared.text)
+        self.assertIsNone(cleared.json()["parcels"][0]["boundary_polygon"])
+        self.assertEqual(len(initial_parcels), 1)
+
 
 
