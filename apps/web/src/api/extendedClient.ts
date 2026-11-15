@@ -614,13 +614,78 @@ export interface ForgotPasswordResponse {
   ok: boolean;
   delivery_status: string;
   smtp_configured: boolean;
-  message: string;
+  code_dispatched?: boolean;
+  message?: string;
+}
+
+export interface AuthProvidersResponse {
+  google_enabled: boolean;
+  google_client_id: string;
+  smtp_configured: boolean;
+}
+
+export interface RequestRegisterOtpResponse {
+  ok: boolean;
+  email: string;
+  expires_in_seconds: number;
+  delivery_status: string;
+}
+
+export function fetchAuthProviders(signal?: AbortSignal): Promise<AuthProvidersResponse> {
+  return requestWorkspaceJson<AuthProvidersResponse>("/api/v1/auth/providers", {
+    method: "GET",
+    signal,
+  });
+}
+
+export function requestRegistrationOtp(payload: {
+  name: string;
+  email: string;
+  password: string;
+  region: string;
+}): Promise<RequestRegisterOtpResponse> {
+  return requestWorkspaceJson<RequestRegisterOtpResponse>("/api/v1/auth/register/request-otp", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function verifyRegistrationOtp(payload: {
+  email: string;
+  code: string;
+}): Promise<AuthSessionResponse> {
+  return requestWorkspaceJson<AuthSessionResponse>("/api/v1/auth/register/verify-otp", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function loginWithGoogleToken(payload: {
+  credential?: string;
+  access_token?: string;
+  region?: string;
+}): Promise<AuthSessionResponse> {
+  return requestWorkspaceJson<AuthSessionResponse>("/api/v1/auth/google", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export function requestPasswordReset(email: string): Promise<ForgotPasswordResponse> {
-  return requestJsonWithMode<ForgotPasswordResponse>("/api/v1/auth/forgot-password", {
+  return requestWorkspaceJson<ForgotPasswordResponse>("/api/v1/auth/forgot-password", {
     method: "POST",
     body: JSON.stringify({ email }),
+  });
+}
+
+export function resetPasswordWithCode(payload: {
+  email: string;
+  code: string;
+  new_password: string;
+}): Promise<{ ok: boolean }> {
+  return requestWorkspaceJson<{ ok: boolean }>("/api/v1/auth/reset-password", {
+    method: "POST",
+    body: JSON.stringify(payload),
   });
 }
 

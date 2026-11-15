@@ -407,7 +407,7 @@ class WorkspaceApiTests(unittest.TestCase):
         self.assertEqual(overview.status_code, 200)
         dispatches = overview.json()["dispatches"]
         self.assertTrue(
-            any(d["subject"] == "SpaceFarm Password Reset Request" and d["recipient"] == "reset-user@farmer.az" for d in dispatches)
+            any(d["subject"] == "SpaceFarm Password Reset Code" and d["recipient"] == "reset-user@farmer.az" for d in dispatches)
         )
 
         # Non-existent email returns uniform ok=True without account enumeration leak
@@ -417,6 +417,222 @@ class WorkspaceApiTests(unittest.TestCase):
         )
         self.assertEqual(unknown_res.status_code, 200)
         self.assertTrue(unknown_res.json()["ok"])
+
+    def test_registration_4digit_otp_flow(self) -> None:
+        # Unconfigured SMTP honestly reports 503 instead of bypassing OTP
+        unconf = self.client.post(
+            "/api/v1/auth/register/request-otp",
+            json={
+                "name": "Nigar Alizada",
+                "email": "nigar@farmer.az",
+                "password": "strongpassword1",
+                "region": "Quba",
+            },
+        )
+        self.assertEqual(unconf.status_code, 503)
+
+        sent_payloads: list[tuple[str, str, str]] = []
+
+        def _fake_smtp(settings, recipient, subject, body):
+            sent_payloads.append((recipient, subject, body))
+
+        old_env = {
+            "SMTP_HOST": os.environ.get("SMTP_HOST"),
+            "SMTP_USER": os.environ.get("SMTP_USER"),
+            "SMTP_PASSWORD": os.environ.get("SMTP_PASSWORD"),
+        }
+        try:
+            os.environ["SMTP_HOST"] = "smtp.gmail.com"
+            os.environ["SMTP_USER"] = "alerts@spacefarm.az"
+            os.environ["SMTP_PASSWORD"] = "app-password-secret"
+            get_settings.cache_clear()
+
+            with patch("app.services.notifier._send_smtp_sync", side_effect=_fake_smtp):
+                req_res = self.client.post(
+                    "/api/v1/auth/register/request-otp",
+                    json={
+                        "name": "Nigar Alizada",
+                        "email": "nigar@farmer.az",
+                        "password": "strongpassword1",
+                        "region": "Quba",
+                    },
+                )
+            self.assertEqual(req_res.status_code, 200, req_res.text)
+            self.assertEqual(len(sent_payloads), 1)
+            subject = sent_payloads[0][1]
+            import re
+            match = re.search(r"\b(\d{4})\b", subject)
+            self.assertIsNotNone(match, subject)
+            otp_code = match.group(1)
+
+            # Wrong OTP rejected cleanly
+            bad_code = "0000" if otp_code != "0000" else "9999"
+            bad_res = self.client.post(
+                "/api/v1/auth/register/verify-otp",
+                json={"email": "nigar@farmer.az", "code": bad_code},
+            )
+            self.assertEqual(bad_res.status_code, 400)
+
+            # Correct 4-digit OTP creates user + primary Quba parcel + JWT
+            ok_res = self.client.post(
+                "/api/v1/auth/register/verify-otp",
+                json={"email": "nigar@farmer.az", "code": otp_code},
+            )
+            self.assertEqual(ok_res.status_code, 201, ok_res.text)
+            session = ok_res.json()
+            self.assertTrue(session["token"])
+            self.assertEqual(session["user"]["email"], "nigar@farmer.az")
+            self.assertEqual(session["parcels"][0]["region_id"], "quba-khachmaz")
+        finally:
+            for k, v in old_env.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+            get_settings.cache_clear()
+
+    def test_password_reset_6digit_code_flow(self) -> None:
+        self._register_sample(email="forgot-flow@farmer.az", region="Ganja-Dashkasan")
+        sent_payloads: list[tuple[str, str, str]] = []
+
+        def _fake_smtp(settings, recipient, subject, body):
+            sent_payloads.append((recipient, subject, body))
+
+        old_host = os.environ.get("SMTP_HOST")
+        try:
+            os.environ["SMTP_HOST"] = "smtp.gmail.com"
+            get_settings.cache_clear()
+            with patch("app.services.notifier._send_smtp_sync", side_effect=_fake_smtp):
+                res = self.client.post(
+                    "/api/v1/auth/forgot-password",
+                    json={"email": "forgot-flow@farmer.az"},
+                )
+            self.assertEqual(res.status_code, 200, res.text)
+            self.assertTrue(res.json()["code_dispatched"])
+            self.assertEqual(len(sent_payloads), 1)
+            import re
+            match = re.search(r"\b(\d{6})\b", sent_payloads[0][1])
+            self.assertIsNotNone(match, sent_payloads[0][1])
+            reset_code = match.group(1)
+
+            # Wrong 6-digit recovery code rejected
+            bad = self.client.post(
+                "/api/v1/auth/reset-password",
+                json={"email": "forgot-flow@farmer.az", "code": "000001" if reset_code != "000001" else "000002", "new_password": "newpassword123"},
+            )
+            self.assertEqual(bad.status_code, 400)
+
+            # Valid recovery code resets password
+            good = self.client.post(
+                "/api/v1/auth/reset-password",
+                json={"email": "forgot-flow@farmer.az", "code": reset_code, "new_password": "newpassword123"},
+            )
+            self.assertEqual(good.status_code, 200, good.text)
+            self.assertTrue(good.json()["ok"])
+
+            # Old password fails, new password succeeds
+            old_login = self.client.post(
+                "/api/v1/auth/login",
+                json={"email": "forgot-flow@farmer.az", "password": "securepassword1"},
+            )
+            self.assertEqual(old_login.status_code, 401)
+
+            new_login = self.client.post(
+                "/api/v1/auth/login",
+                json={"email": "forgot-flow@farmer.az", "password": "newpassword123"},
+            )
+            self.assertEqual(new_login.status_code, 200, new_login.text)
+            self.assertTrue(new_login.json()["token"])
+        finally:
+            if old_host is None:
+                os.environ.pop("SMTP_HOST", None)
+            else:
+                os.environ["SMTP_HOST"] = old_host
+            get_settings.cache_clear()
+
+    def test_google_oauth_verification(self) -> None:
+        # Unconfigured GOOGLE_CLIENT_ID reports 503 honestly
+        unconf = self.client.post(
+            "/api/v1/auth/google",
+            json={"credential": "x" * 30},
+        )
+        self.assertEqual(unconf.status_code, 503)
+
+        class _DummyResp:
+            def __init__(self, status_code: int, json_data: dict):
+                self.status_code = status_code
+                self._json = json_data
+
+            def json(self):
+                return self._json
+
+        class _DummyGoogleClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                return False
+
+            async def get(self, url: str, params=None, **kwargs):
+                tok = (params or {}).get("id_token")
+                if tok == "valid-google-id-token-123456":
+                    return _DummyResp(
+                        200,
+                        {
+                            "aud": "12345-test.apps.googleusercontent.com",
+                            "sub": "google-sub-998877",
+                            "email": "elchin@gmail.com",
+                            "email_verified": "true",
+                            "name": "Elchin Mammadov",
+                        },
+                    )
+                if tok == "wrong-aud-id-token-123456":
+                    return _DummyResp(
+                        200,
+                        {
+                            "aud": "evil-client.apps.googleusercontent.com",
+                            "sub": "google-sub-111",
+                            "email": "evil@gmail.com",
+                            "email_verified": "true",
+                        },
+                    )
+                return _DummyResp(400, {"error_description": "Invalid Value"})
+
+        old_gid = os.environ.get("GOOGLE_CLIENT_ID")
+        try:
+            os.environ["GOOGLE_CLIENT_ID"] = "12345-test.apps.googleusercontent.com"
+            get_settings.cache_clear()
+
+            prov = self.client.get("/api/v1/auth/providers")
+            self.assertEqual(prov.status_code, 200)
+            self.assertTrue(prov.json()["google_enabled"])
+            self.assertEqual(prov.json()["google_client_id"], "12345-test.apps.googleusercontent.com")
+
+            with patch("app.routes.workspace_api.httpx.AsyncClient", _DummyGoogleClient):
+                wrong_aud = self.client.post(
+                    "/api/v1/auth/google",
+                    json={"credential": "wrong-aud-id-token-123456"},
+                )
+                self.assertEqual(wrong_aud.status_code, 401)
+
+                ok_res = self.client.post(
+                    "/api/v1/auth/google",
+                    json={"credential": "valid-google-id-token-123456", "region": "Astara"},
+                )
+                self.assertEqual(ok_res.status_code, 200, ok_res.text)
+                body = ok_res.json()
+                self.assertTrue(body["token"])
+                self.assertEqual(body["user"]["email"], "elchin@gmail.com")
+                self.assertEqual(body["parcels"][0]["region_id"], "astara")
+        finally:
+            if old_gid is None:
+                os.environ.pop("GOOGLE_CLIENT_ID", None)
+            else:
+                os.environ["GOOGLE_CLIENT_ID"] = old_gid
+            get_settings.cache_clear()
 
     def test_orbital_districts_and_registration_seed(self) -> None:
         dist_res = self.client.get("/api/orbital/districts")

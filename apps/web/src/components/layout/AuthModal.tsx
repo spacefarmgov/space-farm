@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { AlertTriangle, Lock, LogIn, UserPlus, X } from "lucide-react";
 import { useSpaceFarm } from "../../context/SpaceFarmContext";
+import { VERIFIED_AZ_REGIONS } from "../../data/regions";
+import { AZ_DISTRICTS } from "../../data/azDistricts";
 
 export function AuthModal() {
   const {
@@ -195,10 +197,30 @@ export function AuthModal() {
                 value={region}
                 onChange={(e) => setRegion(e.target.value)}
               >
-                <option value="Ganja-Dashkasan">Gəncə-Daşkəsən (40.68°N, 46.36°E)</option>
-                <option value="Aran / Barda-Yevlakh">Aran / Bərdə-Yevlax (40.38°N, 47.12°E)</option>
-                <option value="Guba-Khachmaz">Quba-Xaçmaz (41.36°N, 48.51°E)</option>
-                <option value="Shaki-Zagatala">Şəki-Zaqatala (41.19°N, 47.17°E)</option>
+                <optgroup label="★ Əsas Bölgələr (4)">
+                  {VERIFIED_AZ_REGIONS.map((item) => {
+                    const regionVal =
+                      item.id === "ganja-dashkasan"
+                        ? "Ganja-Dashkasan"
+                        : item.id === "aran-barda"
+                          ? "Aran-Barda"
+                          : item.id === "quba-khachmaz"
+                            ? "Quba-Khachmaz"
+                            : "Sheki-Zaqatala";
+                    return (
+                      <option key={item.id} value={regionVal}>
+                        ★ {item.regionLabelAz}
+                      </option>
+                    );
+                  })}
+                </optgroup>
+                <optgroup label={`Bütün ${AZ_DISTRICTS.length} Rayon (A–Z)`}>
+                  {AZ_DISTRICTS.map((d) => (
+                    <option key={d.id} value={d.nameAz}>
+                      {d.nameAz} ({d.economicRegionAz})
+                    </option>
+                  ))}
+                </optgroup>
               </select>
             </label>
           )}

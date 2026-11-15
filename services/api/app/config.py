@@ -85,6 +85,10 @@ class Settings(BaseSettings):
     smtp_from_email: str = Field(default="alerts@spacefarm.az", alias="SMTP_FROM_EMAIL")
     smtp_use_tls: bool = Field(default=True, alias="SMTP_USE_TLS")
 
+    # Google Identity Services / OAuth & Email OTP
+    google_client_id: str = Field(default="", alias="GOOGLE_CLIENT_ID")
+    otp_ttl_seconds: int = Field(default=600, ge=60, le=3600, alias="OTP_TTL_SECONDS")
+
     # Outbound SMS configuration (twilio | webhook | outbox)
     sms_provider: Literal["twilio", "webhook", "outbox"] = Field(
         default="outbox",

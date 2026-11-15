@@ -259,12 +259,43 @@ export function SatelliteFieldMap({
     }
   }, [latitude, longitude, selectedRegion, showIllustrativeBoundary, onSelectRegion]);
 
+  const handleZoomAzerbaijan = () => {
+    const map = mapRef.current;
+    if (!map) return;
+    map.fitBounds(
+      [
+        [38.35, 44.75],
+        [41.92, 50.65],
+      ],
+      { padding: [26, 26], maxZoom: 8, animate: true },
+    );
+  };
+
   return (
-    <div className="sf-map-box" style={{ height, width: "100%" }}>
+    <div className="sf-map-box" style={{ height, width: "100%", position: "relative" }}>
       <div
         ref={containerRef}
         style={{ width: "100%", height: "100%", minHeight: typeof height === "number" ? height : 420 }}
       />
+      <button
+        type="button"
+        className="sf-btn sf-btn-sm"
+        onClick={handleZoomAzerbaijan}
+        style={{
+          position: "absolute",
+          top: 12,
+          right: 12,
+          zIndex: 500,
+          background: "rgba(10, 9, 24, 0.86)",
+          borderColor: "rgba(103, 232, 249, 0.45)",
+          color: "#e0f2fe",
+          backdropFilter: "blur(10px)",
+          boxShadow: "0 4px 16px rgba(0, 0, 0, 0.4)",
+        }}
+        title="Fit all 67 Azerbaijan districts"
+      >
+        <span>🇦🇿 67 Rayon Xəritəsi</span>
+      </button>
     </div>
   );
 }

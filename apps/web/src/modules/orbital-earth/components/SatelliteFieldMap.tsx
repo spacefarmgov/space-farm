@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import Leaflet from "leaflet";
 import { buildParcelAroundPoint, computeGeodesicAreaHa, SATELLITE_FILTERS } from "../data/presets";
+import { AZ_DISTRICTS } from "../../../data/azDistricts";
+import { getMerra2CellBounds, VERIFIED_AZ_REGIONS } from "../../../data/regions";
 import { sampleWindField } from "../services/realTelemetry";
 import type {
   LiveClimateSnapshot,
@@ -79,11 +81,14 @@ export const SatelliteFieldMap: React.FC<SatelliteFieldMapProps> = ({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     polygonLayer?: any;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    districtGroup?: any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vertexMarkers: any[];
   }>({ vertexMarkers: [] });
 
   const [editVertices, setEditVertices] = useState(false);
   const [telemetryOpen, setTelemetryOpen] = useState(false);
+  const [overviewMode, setOverviewMode] = useState(false);
 
   const propsRef = useRef({
     selectedLat,
@@ -170,6 +175,8 @@ export const SatelliteFieldMap: React.FC<SatelliteFieldMapProps> = ({
       dashArray: "6 4",
     }).addTo(map);
 
+    const districtGroup = L.layerGroup().addTo(map);
+
     map.on("click", (e: { latlng: { lat: number; lng: number } }) => {
       if (propsRef.current.editVertices) return;
       const newLat = Number(e.latlng.lat.toFixed(5));
@@ -181,6 +188,7 @@ export const SatelliteFieldMap: React.FC<SatelliteFieldMapProps> = ({
       thermal: thermalLayer,
       ndvi: ndviLayer,
       polygonLayer,
+      districtGroup,
       vertexMarkers: [],
     };
     mapRef.current = map;
@@ -195,13 +203,93 @@ export const SatelliteFieldMap: React.FC<SatelliteFieldMapProps> = ({
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    map.setView([selectedLat, selectedLon], 14, { animate: isVisible });
+    if (overviewMode) {
+      map.fitBounds(
+        [
+          [38.35, 44.75],
+          [41.92, 50.65],
+        ],
+        { padding: [28, 28], maxZoom: 8, animate: isVisible }
+      );
+    } else {
+      map.setView([selectedLat, selectedLon], 14, { animate: isVisible });
+    }
     if (isVisible) {
       window.setTimeout(() => {
         map.invalidateSize({ animate: false });
       }, 60);
     }
-  }, [selectedLat, selectedLon, isVisible]);
+  }, [selectedLat, selectedLon, isVisible, overviewMode]);
+
+  // Render all 67 clickable Azerbaijan district pins + primary hubs + MERRA-2 grid cell
+  useEffect(() => {
+    const L = window.L;
+    const { districtGroup } = layersRef.current;
+    if (!L || !districtGroup) return;
+    districtGroup.clearLayers();
+
+    const cell = getMerra2CellBounds(selectedLat, selectedLon);
+    L.rectangle(
+      [
+        [cell.south, cell.west],
+        [cell.north, cell.east],
+      ],
+      {
+        color: "#67e8f9",
+        weight: 1.5,
+        dashArray: "6 4",
+        fillColor: "#67e8f9",
+        fillOpacity: 0.06,
+      }
+    )
+      .bindTooltip("MERRA-2 / NASA POWER 0.5° × 0.625° grid cell")
+      .addTo(districtGroup);
+
+    for (const region of VERIFIED_AZ_REGIONS) {
+      const isActive =
+        Math.abs(region.latitude - selectedLat) < 0.015 &&
+        Math.abs(region.longitude - selectedLon) < 0.015;
+      const marker = L.circleMarker([region.latitude, region.longitude], {
+        radius: isActive ? 9 : 7,
+        color: "#f6f5fb",
+        weight: 2,
+        fillColor: isActive ? "#34d399" : region.hasBoundary ? "#8b5cf6" : "#67e8f9",
+        fillOpacity: 0.96,
+      }).bindTooltip(
+        `${language === "az" ? region.nameAz : region.nameEn} (${region.latitude.toFixed(2)}°N, ${region.longitude.toFixed(2)}°E)`
+      );
+      marker.on("click", (e: { originalEvent?: Event }) => {
+        L.DomEvent.stopPropagation(e);
+        setOverviewMode(false);
+        propsRef.current.onSelectLocation(region.latitude, region.longitude);
+      });
+      marker.addTo(districtGroup);
+    }
+
+    for (const d of AZ_DISTRICTS) {
+      const overlapsPrimary = VERIFIED_AZ_REGIONS.some(
+        (r) => Math.abs(r.latitude - d.lat) < 0.03 && Math.abs(r.longitude - d.lon) < 0.03
+      );
+      const isActive =
+        Math.abs(d.lat - selectedLat) < 0.015 && Math.abs(d.lon - selectedLon) < 0.015;
+      if (overlapsPrimary && !isActive) continue;
+
+      const dMarker = L.circleMarker([d.lat, d.lon], {
+        radius: isActive ? 8 : 5,
+        color: isActive ? "#f6f5fb" : "#0ea5e9",
+        weight: isActive ? 2 : 1.2,
+        fillColor: isActive ? "#34d399" : "#38bdf8",
+        fillOpacity: isActive ? 0.96 : 0.78,
+      }).bindTooltip(
+        `${language === "az" ? d.nameAz : d.nameEn} · SRTM ${d.elevationM.toFixed(0)} m · ${d.annualRainMm.toFixed(0)} mm`
+      );
+      dMarker.on("click", (e: { originalEvent?: Event }) => {
+        L.DomEvent.stopPropagation(e);
+        propsRef.current.onSelectLocation(d.lat, d.lon);
+      });
+      dMarker.addTo(districtGroup);
+    }
+  }, [selectedLat, selectedLon, language]);
 
   // Sync MODIS Thermal / NDVI Leaflet tile overlays with active filter
   useEffect(() => {
@@ -437,6 +525,25 @@ export const SatelliteFieldMap: React.FC<SatelliteFieldMapProps> = ({
           >
             <span aria-hidden="true">↑</span>
             {isAz ? "3D Orbitə Qayıt" : "Return to 3D Orbit"}
+          </button>
+
+          <button
+            type="button"
+            className={`sf-btn-return-orbit ${overviewMode ? "is-active" : ""}`}
+            style={{
+              borderColor: overviewMode ? "rgba(103, 232, 249, 0.85)" : undefined,
+              background: overviewMode ? "rgba(14, 165, 233, 0.25)" : undefined,
+            }}
+            onClick={() => setOverviewMode((prev) => !prev)}
+          >
+            <span>🇦🇿</span>
+            {overviewMode
+              ? isAz
+                ? "Sahəyə Yaxınlaş"
+                : "Focus Selected Plot"
+              : isAz
+                ? "67 Rayon Xəritəsi"
+                : "67 Districts View"}
           </button>
 
           <div className="sf-map-location-badge">

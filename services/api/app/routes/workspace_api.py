@@ -6,6 +6,7 @@ import logging
 from datetime import date
 from typing import Any, Literal
 
+import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -21,7 +22,9 @@ from app.engine.risk_analyzer import scan_user_parcels
 from app.services.notifier import (
     dispatch_alert_notifications,
     normalize_e164_phone,
+    send_auth_otp_email,
     send_email_notification,
+    send_password_reset_code_email,
 )
 from app.workers.risk_monitor import risk_worker
 from app.schemas.models import (
@@ -111,6 +114,55 @@ class ForgotPasswordPayload(_StrictBody):
         if "@" not in clean or "." not in clean.split("@")[-1]:
             raise ValueError("Please provide a valid email address.")
         return clean
+
+
+class OtpVerifyPayload(_StrictBody):
+    email: str = Field(min_length=5, max_length=180)
+    code: str = Field(min_length=4, max_length=4)
+
+    @field_validator("email")
+    @classmethod
+    def _validate_email(cls, value: str) -> str:
+        clean = value.strip().lower()
+        if "@" not in clean or "." not in clean.split("@")[-1]:
+            raise ValueError("Please provide a valid email address.")
+        return clean
+
+    @field_validator("code")
+    @classmethod
+    def _validate_code(cls, value: str) -> str:
+        clean = value.strip()
+        if not clean.isdigit() or len(clean) != 4:
+            raise ValueError("Verification code must be exactly 4 digits.")
+        return clean
+
+
+class ResetPasswordPayload(_StrictBody):
+    email: str = Field(min_length=5, max_length=180)
+    code: str = Field(min_length=6, max_length=6)
+    new_password: str = Field(min_length=6, max_length=128)
+
+    @field_validator("email")
+    @classmethod
+    def _validate_email(cls, value: str) -> str:
+        clean = value.strip().lower()
+        if "@" not in clean or "." not in clean.split("@")[-1]:
+            raise ValueError("Please provide a valid email address.")
+        return clean
+
+    @field_validator("code")
+    @classmethod
+    def _validate_code(cls, value: str) -> str:
+        clean = value.strip()
+        if not clean.isdigit() or len(clean) != 6:
+            raise ValueError("Recovery code must be exactly 6 digits.")
+        return clean
+
+
+class GoogleAuthPayload(_StrictBody):
+    credential: str | None = Field(default=None, min_length=20, max_length=4096)
+    access_token: str | None = Field(default=None, min_length=20, max_length=4096)
+    region: str = Field(default="Ganja-Dashkasan", max_length=120)
 
 
 class ProfilePatchPayload(_StrictBody):
@@ -247,6 +299,118 @@ def _farm_from_primary_parcel(parcels: list[dict[str, Any]], region: str) -> Far
     )
 
 
+def _map_code_verification_error(reason: str) -> HTTPException:
+    if reason == "expired":
+        return HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail="Verification code has expired. Request a new code.",
+        )
+    if reason == "too_many_attempts":
+        return HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many failed attempts. Request a new verification code.",
+        )
+    if reason == "email_exists":
+        return HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="An account with this email already exists.",
+        )
+    return HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Invalid verification code.",
+    )
+
+
+async def _verify_google_identity(
+    *,
+    credential: str | None,
+    access_token: str | None,
+    expected_client_id: str,
+) -> dict[str, Any]:
+    if not credential and not access_token:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Google credential or access_token is required.",
+        )
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            if credential:
+                resp = await client.get(
+                    "https://oauth2.googleapis.com/tokeninfo",
+                    params={"id_token": credential},
+                )
+                if resp.status_code != 200:
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="Invalid or expired Google ID token.",
+                    )
+                info = resp.json()
+                if str(info.get("aud") or "").strip() != expected_client_id:
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="Google token audience mismatch.",
+                    )
+            else:
+                info_resp = await client.get(
+                    "https://oauth2.googleapis.com/tokeninfo",
+                    params={"access_token": access_token},
+                )
+                if info_resp.status_code != 200:
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="Invalid or expired Google access token.",
+                    )
+                token_meta = info_resp.json()
+                if str(token_meta.get("aud") or "").strip() != expected_client_id:
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="Google access token audience mismatch.",
+                    )
+                user_resp = await client.get(
+                    "https://www.googleapis.com/oauth2/v3/userinfo",
+                    headers={"Authorization": f"Bearer {access_token}"},
+                )
+                if user_resp.status_code != 200:
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="Could not load verified Google profile.",
+                    )
+                info = user_resp.json()
+    except HTTPException:
+        raise
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Unable to reach Google OAuth verification service: {exc}",
+        ) from exc
+
+    verified_raw = str(info.get("email_verified", "")).lower()
+    email = str(info.get("email") or "").strip().lower()
+    sub = str(info.get("sub") or "").strip()
+    if verified_raw not in {"true", "1"} or not email or not sub:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Google account email is not verified.",
+        )
+    return {
+        "sub": sub,
+        "email": email,
+        "name": str(info.get("name") or info.get("given_name") or email.split("@")[0]).strip(),
+        "picture": str(info.get("picture") or "").strip() or None,
+    }
+
+
+@router.get("/auth/providers")
+def get_auth_providers() -> dict[str, Any]:
+    settings = get_settings()
+    client_id = settings.google_client_id.strip()
+    return {
+        "google_enabled": bool(client_id),
+        "google_client_id": client_id,
+        "smtp_configured": bool(settings.smtp_host.strip()),
+    }
+
+
 @router.post("/auth/register", status_code=status.HTTP_201_CREATED)
 def register_account(
     payload: RegisterPayload,
@@ -262,6 +426,84 @@ def register_account(
         email=payload.email,
         password=payload.password,
         region=payload.region,
+    )
+    return {"token": token, "user": user, "parcels": parcels}
+
+
+@router.post("/auth/register/request-otp")
+async def request_registration_otp(
+    payload: RegisterPayload,
+    store: SpaceFarmStore = Depends(_get_store),
+) -> dict[str, Any]:
+    if store.email_exists(payload.email):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="An account with this email already exists.",
+        )
+    settings = get_settings()
+    if not settings.smtp_host.strip():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Email OTP delivery is not configured yet (set SMTP_HOST, SMTP_USER, SMTP_PASSWORD in .env).",
+        )
+    otp_code = store.create_registration_otp(
+        name=payload.name,
+        email=payload.email,
+        password=payload.password,
+        region=payload.region,
+        ttl_seconds=settings.otp_ttl_seconds,
+    )
+    email_res = await send_auth_otp_email(settings, payload.email, payload.name, otp_code)
+    if email_res.get("status") != "sent":
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Could not deliver 4-digit OTP email: {email_res.get('error_detail') or email_res.get('status')}",
+        )
+    return {
+        "ok": True,
+        "email": payload.email,
+        "expires_in_seconds": settings.otp_ttl_seconds,
+        "delivery_status": "sent",
+    }
+
+
+@router.post("/auth/register/verify-otp", status_code=status.HTTP_201_CREATED)
+def verify_registration_otp(
+    payload: OtpVerifyPayload,
+    store: SpaceFarmStore = Depends(_get_store),
+) -> dict[str, Any]:
+    outcome, token, user, parcels = store.verify_registration_otp(
+        email=payload.email,
+        code=payload.code,
+    )
+    if outcome != "ok" or token is None or user is None:
+        raise _map_code_verification_error(outcome)
+    return {"token": token, "user": user, "parcels": parcels}
+
+
+@router.post("/auth/google")
+async def google_login(
+    payload: GoogleAuthPayload,
+    store: SpaceFarmStore = Depends(_get_store),
+) -> dict[str, Any]:
+    settings = get_settings()
+    client_id = settings.google_client_id.strip()
+    if not client_id:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Google OAuth SSO is not configured yet (set GOOGLE_CLIENT_ID in .env).",
+        )
+    identity = await _verify_google_identity(
+        credential=payload.credential,
+        access_token=payload.access_token,
+        expected_client_id=client_id,
+    )
+    token, user, parcels = store.authenticate_or_register_google(
+        google_sub=identity["sub"],
+        email=identity["email"],
+        name=identity["name"],
+        region=payload.region,
+        avatar_url=identity["picture"],
     )
     return {"token": token, "user": user, "parcels": parcels}
 
@@ -287,29 +529,24 @@ async def request_password_reset(
     store: SpaceFarmStore = Depends(_get_store),
 ) -> dict[str, Any]:
     settings = get_settings()
-    reset_rec = store.create_password_reset_request(payload.email)
+    reset_code_rec = store.create_password_reset_code(payload.email, ttl_seconds=900)
+    smtp_ready = bool(settings.smtp_host.strip())
     delivery_status = "processed_no_leak"
-    if reset_rec is not None:
-        email_res = await send_email_notification(
+    if reset_code_rec is not None:
+        email_res = await send_password_reset_code_email(
             settings,
-            reset_rec["email"],
-            "SpaceFarm Password Reset Verification",
-            (
-                f"Hello {reset_rec['name']},\n\n"
-                f"A password reset request was recorded for your SpaceFarm account "
-                f"(request ID: {reset_rec['request_id']}).\n"
-                "Please verify via your configured SpaceFarm administrator or mail relay.\n"
-            ),
+            reset_code_rec["email"],
+            reset_code_rec["name"],
+            reset_code_rec["code"],
         )
         delivery_status = str(email_res.get("status") or "queued_awaiting_credentials")
-        store.update_password_reset_status(reset_rec["request_id"], delivery_status)
         store.record_dispatch(
-            user_id=reset_rec["user_id"],
+            user_id=reset_code_rec["user_id"],
             alert_id=None,
             channel="email",
-            recipient=reset_rec["email"],
-            subject="SpaceFarm Password Reset Request",
-            body=f"Password reset request {reset_rec['request_id']}",
+            recipient=reset_code_rec["email"],
+            subject="SpaceFarm Password Reset Code",
+            body="6-digit password reset code requested",
             provider=str(email_res.get("provider") or "local_outbox_unconfigured"),
             status=delivery_status,
             error_detail=email_res.get("error_detail"),
@@ -317,8 +554,24 @@ async def request_password_reset(
     return {
         "ok": True,
         "delivery_status": delivery_status,
-        "smtp_configured": bool(settings.smtp_host.strip()),
+        "smtp_configured": smtp_ready,
+        "code_dispatched": smtp_ready and delivery_status == "sent",
     }
+
+
+@router.post("/auth/reset-password")
+def reset_password_with_code(
+    payload: ResetPasswordPayload,
+    store: SpaceFarmStore = Depends(_get_store),
+) -> dict[str, Any]:
+    outcome = store.verify_and_reset_password(
+        email=payload.email,
+        code=payload.code,
+        new_password=payload.new_password,
+    )
+    if outcome != "ok":
+        raise _map_code_verification_error(outcome)
+    return {"ok": True}
 
 
 @router.get("/profile")

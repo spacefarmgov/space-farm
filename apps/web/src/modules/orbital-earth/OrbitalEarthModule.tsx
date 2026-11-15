@@ -36,6 +36,19 @@ function matchNearestPreset(lat: number, lon: number) {
   );
 }
 
+function matchNearestAzDistrict(lat: number, lon: number) {
+  let best = null as (typeof AZ_DISTRICTS)[number] | null;
+  let bestDist = 0.08;
+  for (const d of AZ_DISTRICTS) {
+    const dist = Math.hypot(d.lat - lat, d.lon - lon);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = d;
+    }
+  }
+  return best;
+}
+
 export const OrbitalEarthModule: React.FC<OrbitalEarthModuleProps> = ({
   initialLat = 40.68,
   initialLon = 46.36,
@@ -198,10 +211,13 @@ export const OrbitalEarthModule: React.FC<OrbitalEarthModuleProps> = ({
       const matched = presetId
         ? ORBITAL_PRESETS.find((p) => p.id === presetId) ?? null
         : matchNearestPreset(lat, lon) ?? null;
+      const matchedDistrict = !matched ? matchNearestAzDistrict(lat, lon) : null;
 
-      const resolvedPresetId = matched?.id ?? presetId ?? null;
-      const resolvedLat = matched && presetId ? matched.lat : lat;
-      const resolvedLon = matched && presetId ? matched.lon : lon;
+      const resolvedPresetId = matched?.id ?? presetId ?? matchedDistrict?.id ?? null;
+      const resolvedLat =
+        matched && presetId ? matched.lat : matchedDistrict ? matchedDistrict.lat : lat;
+      const resolvedLon =
+        matched && presetId ? matched.lon : matchedDistrict ? matchedDistrict.lon : lon;
       const nextPoly = matched
         ? matched.polygon
         : buildParcelAroundPoint(resolvedLat, resolvedLon);
@@ -212,12 +228,16 @@ export const OrbitalEarthModule: React.FC<OrbitalEarthModuleProps> = ({
           ? language === "az"
             ? matched.nameAz
             : matched.nameEn
-          : `${resolvedLat.toFixed(3)}°N, ${resolvedLon.toFixed(3)}°E`);
+          : matchedDistrict
+            ? language === "az"
+              ? `${matchedDistrict.nameAz} (${matchedDistrict.economicRegionAz})`
+              : `${matchedDistrict.nameEn} (${matchedDistrict.economicRegionEn})`
+            : `${resolvedLat.toFixed(3)}°N, ${resolvedLon.toFixed(3)}°E`);
 
       setSelectedLat(resolvedLat);
       setSelectedLon(resolvedLon);
       setSelectedPresetId(resolvedPresetId);
-      setCustomLabel(matched ? null : (labelOverride ?? null));
+      setCustomLabel(matched ? null : (labelOverride ?? nextLabel));
       setPolygon(nextPoly);
       setAreaHa(nextHa);
 

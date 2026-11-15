@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, type ReactNode } from "react";
+import { Component, Suspense, lazy, useEffect, type ErrorInfo, type ReactNode } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { SpaceFarmProvider, useSpaceFarm } from "./context/SpaceFarmContext";
 import {
@@ -39,6 +39,58 @@ const RiskAlertsPage = lazy(() =>
 const AuthPage = lazy(() =>
   import("./pages/AuthPage").then((m) => ({ default: m.AuthPage })),
 );
+
+class RouteErrorBoundary extends Component<
+  { children: ReactNode },
+  { hasError: boolean; message: string }
+> {
+  state = { hasError: false, message: "" };
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, message: error?.message || "Unexpected interface error." };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    if (import.meta.env.DEV) {
+      console.error("SpaceFarm route boundary caught:", error, info.componentStack);
+    }
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div
+          style={{
+            minHeight: "100vh",
+            display: "grid",
+            placeItems: "center",
+            padding: 24,
+            background: "var(--bg-void, #05050b)",
+            color: "var(--text-primary, #f6f5fb)",
+          }}
+        >
+          <div className="sf-panel" style={{ maxWidth: 460, textAlign: "center" }}>
+            <h2 style={{ marginTop: 0 }}>SpaceFarm View Reloaded</h2>
+            <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>
+              {this.state.message}
+            </p>
+            <button
+              type="button"
+              className="sf-btn sf-btn-primary"
+              onClick={() => {
+                this.setState({ hasError: false, message: "" });
+                window.location.reload();
+              }}
+            >
+              Reload Page
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 function RouteFallback() {
   return <SpaceFarmLoader variant="route" />;
@@ -90,8 +142,9 @@ export default function App() {
         <SpaceFarmBootCurtain />
         <SpaceFarmRouteBar />
         <ScrollToTopOnNavigate />
-        <Suspense fallback={<RouteFallback />}>
-          <Routes>
+        <RouteErrorBoundary>
+          <Suspense fallback={<RouteFallback />}>
+            <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/login" element={<AuthPage initialMode="login" />} />
             <Route path="/register" element={<AuthPage initialMode="register" />} />
@@ -169,8 +222,9 @@ export default function App() {
               }
             />
             <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </Suspense>
+            </Routes>
+          </Suspense>
+        </RouteErrorBoundary>
       </SpaceFarmProvider>
     </BrowserRouter>
   );

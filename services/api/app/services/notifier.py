@@ -55,6 +55,14 @@ def _send_smtp_sync(
     msg["Subject"] = subject
     msg.set_content(body_text)
 
+    if settings.smtp_port == 465:
+        with smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port, timeout=15) as server:
+            server.ehlo()
+            if settings.smtp_user and settings.smtp_password:
+                server.login(settings.smtp_user, settings.smtp_password)
+            server.send_message(msg)
+        return
+
     with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=15) as server:
         server.ehlo()
         if settings.smtp_use_tls:
@@ -95,6 +103,46 @@ async def send_email_notification(
     except Exception as exc:
         logger.warning("SMTP delivery failed for %s: %s", clean_email, exc)
         return {"provider": "smtp", "status": "failed", "error_detail": str(exc)[:300]}
+
+
+async def send_auth_otp_email(
+    settings: Settings,
+    recipient_email: str,
+    name: str,
+    otp_code: str,
+) -> dict[str, str | None]:
+    """Send 4-digit registration verification code to user's email."""
+    clean_name = (name or "Farmer").strip()
+    subject = f"SpaceFarm Doğrulama Kodu: {otp_code} / Verification Code"
+    body = (
+        f"Salam {clean_name},\n\n"
+        f"SpaceFarm hesabınızı təsdiqləmək üçün 4 rəqəmli kod: {otp_code}\n"
+        "Bu kod 10 dəqiqə ərzində etibarlıdır. Kodu heç kimlə paylaşmayın.\n\n"
+        f"---\nHello {clean_name},\n"
+        f"Your 4-digit SpaceFarm verification code is: {otp_code}\n"
+        "Valid for 10 minutes."
+    )
+    return await send_email_notification(settings, recipient_email, subject, body)
+
+
+async def send_password_reset_code_email(
+    settings: Settings,
+    recipient_email: str,
+    name: str,
+    reset_code: str,
+) -> dict[str, str | None]:
+    """Send 6-digit password recovery code to user's email."""
+    clean_name = (name or "Farmer").strip()
+    subject = f"SpaceFarm Şifrə Bərpa Kodu: {reset_code} / Password Reset"
+    body = (
+        f"Salam {clean_name},\n\n"
+        f"SpaceFarm şifrənizi yeniləmək üçün 6 rəqəmli bərpa kodu: {reset_code}\n"
+        "Bu kod 15 dəqiqə ərzində etibarlıdır. Əgər bu sorğunu siz göndərməmisinizsə, məktubu nəzərə almayın.\n\n"
+        f"---\nHello {clean_name},\n"
+        f"Your 6-digit SpaceFarm password reset code is: {reset_code}\n"
+        "Valid for 15 minutes."
+    )
+    return await send_email_notification(settings, recipient_email, subject, body)
 
 
 async def send_sms_notification(

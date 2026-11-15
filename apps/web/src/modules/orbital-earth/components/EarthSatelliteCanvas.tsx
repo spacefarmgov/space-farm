@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { AZ_DISTRICTS } from "../../../data/azDistricts";
 import { ORBITAL_PRESETS } from "../data/presets";
 import {
   buildRealOrbitVectors,
@@ -509,6 +510,7 @@ export const EarthSatelliteCanvas: React.FC<EarthSatelliteCanvasProps> = ({
   const sceneObjectsRef = useRef<{
     earthMat?: THREE.ShaderMaterial;
     targetRing?: THREE.LineLoop;
+    azDotsGeo?: THREE.BufferGeometry;
     satHolder?: THREE.Group;
     orbitLine?: THREE.Line;
     windSegments?: THREE.LineSegments;
@@ -533,13 +535,27 @@ export const EarthSatelliteCanvas: React.FC<EarthSatelliteCanvasProps> = ({
         };
       }
     }
-    // Update subtle surface reticle ring
+    // Update subtle surface reticle ring & active Azerbaijan district dot highlight
     const ring = sceneObjectsRef.current.targetRing;
     if (ring) {
       ring.geometry.dispose();
       ring.geometry = new THREE.BufferGeometry().setFromPoints(
         buildSurfaceReticleRing(selectedLat, selectedLon, 1.05)
       );
+    }
+    const azGeo = sceneObjectsRef.current.azDotsGeo;
+    if (azGeo) {
+      const colAttr = azGeo.getAttribute("color") as THREE.BufferAttribute | undefined;
+      if (colAttr) {
+        const colArr = colAttr.array as Float32Array;
+        AZ_DISTRICTS.forEach((d, idx) => {
+          const isActive = Math.hypot(d.lat - selectedLat, d.lon - selectedLon) < 0.08;
+          colArr[idx * 3] = isActive ? 0.2 : 0.22;
+          colArr[idx * 3 + 1] = isActive ? 0.96 : 0.74;
+          colArr[idx * 3 + 2] = isActive ? 0.62 : 0.98;
+        });
+        colAttr.needsUpdate = true;
+      }
     }
   }, [selectedLat, selectedLon]);
 
@@ -900,9 +916,38 @@ export const EarthSatelliteCanvas: React.FC<EarthSatelliteCanvasProps> = ({
     windSegments.visible = propsRef.current.filterMode === "wind";
     scene.add(windSegments);
 
+    // 67 Azerbaijan District Silhouette Telemetry Dots directly on Earth surface
+    const azPositions = new Float32Array(AZ_DISTRICTS.length * 3);
+    const azColors = new Float32Array(AZ_DISTRICTS.length * 3);
+    AZ_DISTRICTS.forEach((d, idx) => {
+      const vec = latLonToSceneVec3(d.lat, d.lon, EARTH_RADIUS * 1.0038);
+      azPositions[idx * 3] = vec.x;
+      azPositions[idx * 3 + 1] = vec.y;
+      azPositions[idx * 3 + 2] = vec.z;
+      const isActive =
+        Math.hypot(d.lat - propsRef.current.selectedLat, d.lon - propsRef.current.selectedLon) < 0.08;
+      azColors[idx * 3] = isActive ? 0.2 : 0.22;
+      azColors[idx * 3 + 1] = isActive ? 0.96 : 0.74;
+      azColors[idx * 3 + 2] = isActive ? 0.62 : 0.98;
+    });
+    const azDotsGeo = new THREE.BufferGeometry();
+    azDotsGeo.setAttribute("position", new THREE.BufferAttribute(azPositions, 3));
+    azDotsGeo.setAttribute("color", new THREE.BufferAttribute(azColors, 3));
+    const azDotsMat = new THREE.PointsMaterial({
+      size: 0.014,
+      sizeAttenuation: true,
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.92,
+      depthWrite: false,
+    });
+    const azDotsPoints = new THREE.Points(azDotsGeo, azDotsMat);
+    scene.add(azDotsPoints);
+
     sceneObjectsRef.current = {
       earthMat,
       targetRing,
+      azDotsGeo,
       satHolder,
       orbitLine,
       windSegments,
@@ -1458,6 +1503,8 @@ export const EarthSatelliteCanvas: React.FC<EarthSatelliteCanvasProps> = ({
       atmoMat.dispose();
       ringGeo.dispose();
       ringMat.dispose();
+      azDotsGeo.dispose();
+      azDotsMat.dispose();
       orbitLine.geometry.dispose();
       orbitMat.dispose();
       beamGeo.dispose();

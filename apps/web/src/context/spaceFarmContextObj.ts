@@ -1,5 +1,6 @@
 import { createContext, type Context } from "react";
 import type {
+  AuthSessionResponse,
   WorkspaceLabMetrics,
   WorkspaceParcel,
   WorkspaceUserProfile,
@@ -161,6 +162,7 @@ export interface SpaceFarmContextValue {
     password: string,
     region?: string,
   ) => Promise<AuthActionResult>;
+  establishAuthSession: (session: AuthSessionResponse, toastMessage?: string) => void;
   logoutUser: () => void;
   triggerAuthAlert: (targetPath?: string) => void;
   theme: ThemeMode;

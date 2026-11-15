@@ -295,8 +295,33 @@ class SpaceFarmStore:
                     expires_at INTEGER NOT NULL,
                     created_at TEXT NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS registration_otp_codes (
+                    email TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    region TEXT NOT NULL,
+                    otp_hash TEXT NOT NULL,
+                    attempts INTEGER NOT NULL DEFAULT 0,
+                    expires_at INTEGER NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS password_reset_codes (
+                    email TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    code_hash TEXT NOT NULL,
+                    attempts INTEGER NOT NULL DEFAULT 0,
+                    expires_at INTEGER NOT NULL,
+                    created_at TEXT NOT NULL
+                );
                 """
             )
+            user_cols = {r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
+            if "google_sub" not in user_cols:
+                conn.execute(
+                    "ALTER TABLE users ADD COLUMN google_sub TEXT DEFAULT NULL"
+                )
             cols = {r["name"] for r in conn.execute("PRAGMA table_info(farm_parcels)").fetchall()}
             if "lab_metrics_json" not in cols:
                 conn.execute(
@@ -434,6 +459,81 @@ class SpaceFarmStore:
             "created_at": row["created_at"],
         }
 
+    def _insert_user_with_parcel(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        name: str,
+        email: str,
+        pw_hash: str,
+        region: str,
+        google_sub: str | None = None,
+        avatar_data_url: str | None = None,
+    ) -> str:
+        clean_email = email.strip().lower()
+        clean_name = name.strip() or "SpaceFarm User"
+        clean_region = region.strip() or "Ganja-Dashkasan"
+        handle_base = "".join(
+            ch for ch in clean_email.split("@")[0].lower() if ch.isalnum() or ch in {"_", "."}
+        )
+        username = f"@{handle_base[:24]}" if handle_base else "@farmer"
+        now = _now_iso()
+        today_str = now[:10]
+        user_id = f"usr-{uuid.uuid4().hex[:12]}"
+
+        reg_id, parcel_label, lat, lon, area_ha, crop_id = _resolve_region_seed(clean_region)
+        lab_seed = _default_lab_profile(reg_id)
+        parcel_id = f"pcl-{uuid.uuid4().hex[:10]}"
+
+        conn.execute(
+            """
+            INSERT INTO users (
+                id, name, email, password_hash, region, username, phone_code,
+                phone, active_since, role_type, irrigation_pref, bio,
+                avatar_data_url, google_sub, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, 'AZ +994', '', ?, 'farmer', 'irrigated', '', ?, ?, ?, ?)
+            """,
+            (
+                user_id,
+                clean_name,
+                clean_email,
+                pw_hash,
+                clean_region,
+                username,
+                today_str,
+                avatar_data_url,
+                google_sub,
+                now,
+                now,
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO farm_parcels (
+                id, user_id, label, region_id, latitude, longitude, area_ha,
+                irrigation_type, irrigation_budget_mm, soil_ph, soil_texture,
+                prior_crop_id, lab_metrics_json, is_primary, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+            """,
+            (
+                parcel_id,
+                user_id,
+                parcel_label,
+                reg_id,
+                lat,
+                lon,
+                area_ha,
+                lab_seed["irrigation_type"],
+                lab_seed["irrigation_budget_mm"],
+                lab_seed["soil_ph"],
+                lab_seed["soil_texture"],
+                crop_id,
+                json.dumps(lab_seed["lab_metrics"]),
+                now,
+            ),
+        )
+        return user_id
+
     def register_user(
         self,
         *,
@@ -442,60 +542,144 @@ class SpaceFarmStore:
         password: str,
         region: str = "Ganja-Dashkasan",
     ) -> tuple[str, dict[str, Any], list[dict[str, Any]]]:
-        clean_email = email.strip().lower()
-        clean_name = name.strip()
-        clean_region = region.strip() or "Ganja-Dashkasan"
-        handle_base = "".join(ch for ch in clean_email.split("@")[0].lower() if ch.isalnum() or ch in {"_", "."})
-        username = f"@{handle_base[:24]}" if handle_base else "@farmer"
-        now = _now_iso()
-        today_str = now[:10]
-        user_id = f"usr-{uuid.uuid4().hex[:12]}"
         pw_hash = self.hash_password(password)
-
-        reg_id, parcel_label, lat, lon, area_ha, crop_id = _resolve_region_seed(clean_region)
-        lab_seed = _default_lab_profile(reg_id)
-        parcel_id = f"pcl-{uuid.uuid4().hex[:10]}"
-
         with self._connect() as conn:
-            conn.execute(
-                """
-                INSERT INTO users (
-                    id, name, email, password_hash, region, username, phone_code,
-                    phone, active_since, role_type, irrigation_pref, bio,
-                    avatar_data_url, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, 'AZ +994', '', ?, 'farmer', 'irrigated', '', NULL, ?, ?)
-                """,
-                (user_id, clean_name, clean_email, pw_hash, clean_region, username, today_str, now, now),
-            )
-            conn.execute(
-                """
-                INSERT INTO farm_parcels (
-                    id, user_id, label, region_id, latitude, longitude, area_ha,
-                    irrigation_type, irrigation_budget_mm, soil_ph, soil_texture,
-                    prior_crop_id, lab_metrics_json, is_primary, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
-                """,
-                (
-                    parcel_id,
-                    user_id,
-                    parcel_label,
-                    reg_id,
-                    lat,
-                    lon,
-                    area_ha,
-                    lab_seed["irrigation_type"],
-                    lab_seed["irrigation_budget_mm"],
-                    lab_seed["soil_ph"],
-                    lab_seed["soil_texture"],
-                    crop_id,
-                    json.dumps(lab_seed["lab_metrics"]),
-                    now,
-                ),
+            user_id = self._insert_user_with_parcel(
+                conn,
+                name=name,
+                email=email,
+                pw_hash=pw_hash,
+                region=region,
             )
 
         profile, parcels = self.get_user_bundle(user_id)
         if profile is None:
             raise RuntimeError("Failed to read created user")
+        return self.create_token(user_id), profile, parcels
+
+    @staticmethod
+    def _hash_otp_code(email: str, code: str) -> str:
+        return hashlib.sha256(f"{email.strip().lower()}:{code.strip()}".encode("utf-8")).hexdigest()
+
+    def create_registration_otp(
+        self,
+        *,
+        name: str,
+        email: str,
+        password: str,
+        region: str = "Ganja-Dashkasan",
+        ttl_seconds: int = 600,
+    ) -> str:
+        clean_email = email.strip().lower()
+        clean_name = name.strip()
+        clean_region = region.strip() or "Ganja-Dashkasan"
+        pw_hash = self.hash_password(password)
+        otp_code = f"{secrets.randbelow(10000):04d}"
+        otp_hash = self._hash_otp_code(clean_email, otp_code)
+        expires_at = int(time.time()) + ttl_seconds
+        now = _now_iso()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO registration_otp_codes (
+                    email, name, password_hash, region, otp_hash, attempts, expires_at, created_at
+                ) VALUES (?, ?, ?, ?, ?, 0, ?, ?)
+                ON CONFLICT(email) DO UPDATE SET
+                    name = excluded.name,
+                    password_hash = excluded.password_hash,
+                    region = excluded.region,
+                    otp_hash = excluded.otp_hash,
+                    attempts = 0,
+                    expires_at = excluded.expires_at,
+                    created_at = excluded.created_at
+                """,
+                (clean_email, clean_name, pw_hash, clean_region, otp_hash, expires_at, now),
+            )
+        return otp_code
+
+    def verify_registration_otp(
+        self,
+        *,
+        email: str,
+        code: str,
+    ) -> tuple[str, str | None, dict[str, Any] | None, list[dict[str, Any]]]:
+        clean_email = email.strip().lower()
+        clean_code = code.strip()
+        now_ts = int(time.time())
+        with self._connect() as conn:
+            if conn.execute("SELECT 1 FROM users WHERE email = ?", (clean_email,)).fetchone():
+                return "email_exists", None, None, []
+            row = conn.execute(
+                "SELECT * FROM registration_otp_codes WHERE email = ?",
+                (clean_email,),
+            ).fetchone()
+            if row is None:
+                return "not_found", None, None, []
+            if int(row["expires_at"]) < now_ts:
+                conn.execute("DELETE FROM registration_otp_codes WHERE email = ?", (clean_email,))
+                return "expired", None, None, []
+            if int(row["attempts"]) >= 5:
+                return "too_many_attempts", None, None, []
+            expected_hash = self._hash_otp_code(clean_email, clean_code)
+            if not hmac.compare_digest(row["otp_hash"], expected_hash):
+                conn.execute(
+                    "UPDATE registration_otp_codes SET attempts = attempts + 1 WHERE email = ?",
+                    (clean_email,),
+                )
+                return "invalid_code", None, None, []
+            user_id = self._insert_user_with_parcel(
+                conn,
+                name=row["name"],
+                email=clean_email,
+                pw_hash=row["password_hash"],
+                region=row["region"],
+            )
+            conn.execute("DELETE FROM registration_otp_codes WHERE email = ?", (clean_email,))
+
+        profile, parcels = self.get_user_bundle(user_id)
+        if profile is None:
+            raise RuntimeError("Failed to read verified user")
+        return "ok", self.create_token(user_id), profile, parcels
+
+    def authenticate_or_register_google(
+        self,
+        *,
+        google_sub: str,
+        email: str,
+        name: str,
+        region: str = "Ganja-Dashkasan",
+        avatar_url: str | None = None,
+    ) -> tuple[str, dict[str, Any], list[dict[str, Any]]]:
+        clean_email = email.strip().lower()
+        clean_sub = google_sub.strip()
+        clean_avatar = avatar_url if (avatar_url and avatar_url.startswith("https://")) else None
+        now = _now_iso()
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT id, avatar_data_url FROM users WHERE google_sub = ? OR email = ? ORDER BY CASE WHEN google_sub = ? THEN 0 ELSE 1 END LIMIT 1",
+                (clean_sub, clean_email, clean_sub),
+            ).fetchone()
+            if row is not None:
+                user_id = str(row["id"])
+                conn.execute(
+                    "UPDATE users SET google_sub = ?, updated_at = ? WHERE id = ?",
+                    (clean_sub, now, user_id),
+                )
+            else:
+                random_pw = self.hash_password(secrets.token_urlsafe(32))
+                user_id = self._insert_user_with_parcel(
+                    conn,
+                    name=name or clean_email.split("@")[0],
+                    email=clean_email,
+                    pw_hash=random_pw,
+                    region=region,
+                    google_sub=clean_sub,
+                    avatar_data_url=clean_avatar,
+                )
+
+        profile, parcels = self.get_user_bundle(user_id)
+        if profile is None:
+            raise RuntimeError("Failed to read Google-authenticated user")
         return self.create_token(user_id), profile, parcels
 
     def email_exists(self, email: str) -> bool:
@@ -1242,3 +1426,75 @@ class SpaceFarmStore:
                 "UPDATE password_reset_requests SET delivery_status = ? WHERE id = ?",
                 (delivery_status, request_id),
             )
+
+    def create_password_reset_code(
+        self, email: str, ttl_seconds: int = 900
+    ) -> dict[str, Any] | None:
+        clean_email = email.strip().lower()
+        now_ts = int(time.time())
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT id, name, email FROM users WHERE email = ?",
+                (clean_email,),
+            ).fetchone()
+            if not row:
+                return None
+            code = f"{secrets.randbelow(1_000_000):06d}"
+            code_hash = self._hash_otp_code(clean_email, code)
+            expires_at = now_ts + ttl_seconds
+            now = _now_iso()
+            conn.execute(
+                """
+                INSERT INTO password_reset_codes (
+                    email, user_id, code_hash, attempts, expires_at, created_at
+                ) VALUES (?, ?, ?, 0, ?, ?)
+                ON CONFLICT(email) DO UPDATE SET
+                    user_id = excluded.user_id,
+                    code_hash = excluded.code_hash,
+                    attempts = 0,
+                    expires_at = excluded.expires_at,
+                    created_at = excluded.created_at
+                """,
+                (clean_email, row["id"], code_hash, expires_at, now),
+            )
+        return {
+            "user_id": row["id"],
+            "name": row["name"],
+            "email": row["email"],
+            "code": code,
+            "expires_at": expires_at,
+            "created_at": now,
+        }
+
+    def verify_and_reset_password(
+        self, *, email: str, code: str, new_password: str
+    ) -> str:
+        clean_email = email.strip().lower()
+        clean_code = code.strip()
+        now_ts = int(time.time())
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM password_reset_codes WHERE email = ?",
+                (clean_email,),
+            ).fetchone()
+            if row is None:
+                return "not_found"
+            if int(row["expires_at"]) < now_ts:
+                conn.execute("DELETE FROM password_reset_codes WHERE email = ?", (clean_email,))
+                return "expired"
+            if int(row["attempts"]) >= 5:
+                return "too_many_attempts"
+            expected_hash = self._hash_otp_code(clean_email, clean_code)
+            if not hmac.compare_digest(row["code_hash"], expected_hash):
+                conn.execute(
+                    "UPDATE password_reset_codes SET attempts = attempts + 1 WHERE email = ?",
+                    (clean_email,),
+                )
+                return "invalid_code"
+            pw_hash = self.hash_password(new_password)
+            conn.execute(
+                "UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?",
+                (pw_hash, _now_iso(), row["user_id"]),
+            )
+            conn.execute("DELETE FROM password_reset_codes WHERE email = ?", (clean_email,))
+        return "ok"

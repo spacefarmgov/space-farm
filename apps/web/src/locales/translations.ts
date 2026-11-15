@@ -403,6 +403,26 @@ export interface TranslationDictionary {
     createAccount: string;
     sendReset: string;
     resetSent: string;
+    verifyOtpTitle: string;
+    verifyOtpSubtitle: string;
+    otpLabel: string;
+    otpPlaceholder: string;
+    verifyOtpBtn: string;
+    resendOtpBtn: string;
+    resendIn: string;
+    changeDetailsBtn: string;
+    otpSentNotice: string;
+    otpInvalid: string;
+    smtpRequiredNotice: string;
+    resetCodeTitle: string;
+    resetCodeSubtitle: string;
+    resetCodeLabel: string;
+    resetCodePlaceholder: string;
+    newPasswordLabel: string;
+    newPasswordPlaceholder: string;
+    verifyResetBtn: string;
+    resetSuccess: string;
+    alreadyHaveResetCode: string;
     backToSignIn: string;
     newHere: string;
     createLink: string;
@@ -870,7 +890,7 @@ export const TRANSLATIONS: Record<Locale, TranslationDictionary> = {
       aboutTitle: "Turning orbital Earth observation into daily confidence for every farmer",
       aboutSubtitle: "Built by Team CODE44 for the NASA Space Apps Challenge — Field Shift: Adapting Farms with NASA Data.",
       aboutLead: "Farmers rarely lack effort — they lack unified, easy-to-read satellite weather, terrain elevation, and local laboratory soil truth in one place. SpaceFarm combines open NASA Earthdata (POWER, GIBS MODIS, SMAP, GPM, SRTM) with verified Lab pH, humus, and NPK profiles so growers can pick resilient crop rotations and receive timely frost, heat, and drought warnings.",
-      aboutChallengeBadge: "NASA Space Apps · Field Shift Track",
+      aboutChallengeBadge: "NASA Space Apps Challenge · Ganja 2026",
       aboutChallengeLinkLabel: "Explore NASA & Lab Data Architecture",
       aboutCards: [
         {
@@ -1198,7 +1218,7 @@ export const TRANSLATIONS: Record<Locale, TranslationDictionary> = {
       resetTitle: "Forgot your password?",
       resetSubtitle: "Enter your email and we’ll help you get back to your fields.",
       google: "Continue with Google",
-      googleNotConfigured: "Google OAuth SSO is not enabled on this server yet. Please sign in or create an account with your email below.",
+      googleNotConfigured: "Add GOOGLE_CLIENT_ID in .env (and VITE_GOOGLE_CLIENT_ID) to enable live Google Sign-In. Below you can sign in or register directly via email.",
       emailDivider: "or continue with email",
       registerDivider: "or sign up with email",
       fullName: "Full name",
@@ -1212,8 +1232,28 @@ export const TRANSLATIONS: Record<Locale, TranslationDictionary> = {
       forgot: "Forgot password?",
       signIn: "Sign in",
       createAccount: "Create account",
-      sendReset: "Send reset link",
-      resetSent: "If an account exists for this address, reset guidance will be sent via your mail gateway once configured. You can also register a new account anytime.",
+      sendReset: "Send recovery code",
+      resetSent: "If an account exists for this email and SMTP is configured, a 6-digit recovery code has been sent.",
+      verifyOtpTitle: "Verify your email.",
+      verifyOtpSubtitle: "Enter the 4-digit confirmation code sent to your email address.",
+      otpLabel: "4-digit email verification code",
+      otpPlaceholder: "4 digits (e.g. 4829)",
+      verifyOtpBtn: "Confirm code & create account",
+      resendOtpBtn: "Resend code",
+      resendIn: "Resend in",
+      changeDetailsBtn: "Edit details",
+      otpSentNotice: "A 4-digit verification code was sent to",
+      otpInvalid: "Please enter all 4 digits of the verification code.",
+      smtpRequiredNotice: "Email OTP / Reset delivery requires SMTP_HOST, SMTP_USER, and SMTP_PASSWORD in .env.",
+      resetCodeTitle: "Enter recovery code.",
+      resetCodeSubtitle: "Enter the 6-digit code sent to your email and set your new password.",
+      resetCodeLabel: "6-digit recovery code",
+      resetCodePlaceholder: "6 digits",
+      newPasswordLabel: "New password",
+      newPasswordPlaceholder: "Minimum 6 characters",
+      verifyResetBtn: "Update password",
+      resetSuccess: "Password updated. You can now sign in with your new password.",
+      alreadyHaveResetCode: "I already have a 6-digit code",
       backToSignIn: "Back to sign in",
       newHere: "New to SpaceFarm?",
       createLink: "Create an account",
@@ -1712,7 +1752,7 @@ export const TRANSLATIONS: Record<Locale, TranslationDictionary> = {
       aboutTitle: "Kosmosa əsaslanan yer müşahidəsini hər bir fermer üçün aydın gündəlik qərara çeviririk",
       aboutSubtitle: "Team CODE44 tərəfindən NASA Space Apps Challenge — \"Field Shift: Adapting Farms with NASA Data\" missiyası üçün hazırlanıb.",
       aboutLead: "Fermerlərimizin ən böyük çətinliyi peyk hava tarixçəsinin, relyef yüksəkliyinin və laboratoriya torpaq analizinin vahid, sadə sistemdə olmamasıdır. SpaceFarm açıq NASA Earthdata mənbələrini (POWER, GIBS MODIS, SMAP, GPM, SRTM) real Lab pH, humus və NPK göstəriciləri ilə birləşdirərək etibarlı 3 illik əkin planı və erkən hava riski bildirişləri yaradır.",
-      aboutChallengeBadge: "NASA Space Apps · Field Shift",
+      aboutChallengeBadge: "NASA Space Apps Challenge · Gəncə 2026",
       aboutChallengeLinkLabel: "NASA və Lab Məlumat Arxitekturasına Bax",
       aboutCards: [
         {
@@ -2040,7 +2080,7 @@ export const TRANSLATIONS: Record<Locale, TranslationDictionary> = {
       resetTitle: "Şifrəni unutmusan?",
       resetSubtitle: "E-poçt ünvanını daxil et, hesabına qayıtmağa kömək edək.",
       google: "Google ilə davam et",
-      googleNotConfigured: "Google OAuth SSO bu serverdə hələ aktiv deyil. Aşağıdakı formada e-poçtla daxil olun və ya yeni hesab yaradın.",
+      googleNotConfigured: "Canlı Google girişi üçün .env faylında GOOGLE_CLIENT_ID (və VITE_GOOGLE_CLIENT_ID) əlavə edin. Aşağıda e-poçtla daxil ola və ya hesab yarada bilərsiniz.",
       emailDivider: "və ya e-poçtla daxil ol",
       registerDivider: "və ya e-poçtla qeydiyyatdan keç",
       fullName: "Ad və soyad",
@@ -2054,8 +2094,28 @@ export const TRANSLATIONS: Record<Locale, TranslationDictionary> = {
       forgot: "Şifrəni unutmusan?",
       signIn: "Daxil ol",
       createAccount: "Hesab yarat",
-      sendReset: "Bərpa linki göndər",
-      resetSent: "Bu ünvanla hesab mövcuddursa, poçt xidməti qoşulduqdan sonra şifrə bərpa təlimatı göndəriləcək. İstənilən vaxt yeni hesab yarada bilərsiniz.",
+      sendReset: "Bərpa kodu göndər",
+      resetSent: "Bu ünvanla hesab varsa və SMTP sazlanıbsa, 6 rəqəmli bərpa kodu göndərildi.",
+      verifyOtpTitle: "E-poçtunu təsdiqlə.",
+      verifyOtpSubtitle: "E-poçt ünvanına göndərilən 4 rəqəmli təsdiq kodunu daxil et.",
+      otpLabel: "4 rəqəmli e-poçt kodu",
+      otpPlaceholder: "4 rəqəm (məs: 4829)",
+      verifyOtpBtn: "Kodu təsdiqlə və daxil ol",
+      resendOtpBtn: "Kodu yenidən göndər",
+      resendIn: "Yenidən göndər",
+      changeDetailsBtn: "Məlumatları dəyiş",
+      otpSentNotice: "4 rəqəmli təsdiq kodu göndərildi:",
+      otpInvalid: "Zəhmət olmasa 4 rəqəmli təsdiq kodunu tam daxil edin.",
+      smtpRequiredNotice: "E-poçt OTP / Şifrə bərpa kodu göndərişi üçün .env faylında SMTP_HOST, SMTP_USER və SMTP_PASSWORD quraşdırılmalıdır.",
+      resetCodeTitle: "Bərpa kodunu daxil et.",
+      resetCodeSubtitle: "E-poçtunuza göndərilən 6 rəqəmli kodu və yeni şifrənizi yazın.",
+      resetCodeLabel: "6 rəqəmli bərpa kodu",
+      resetCodePlaceholder: "6 rəqəm",
+      newPasswordLabel: "Yeni şifrə",
+      newPasswordPlaceholder: "Ən azı 6 simvol",
+      verifyResetBtn: "Şifrəni yenilə",
+      resetSuccess: "Şifrəniz uğurla yeniləndi. İndi yeni şifrə ilə daxil ola bilərsiniz.",
+      alreadyHaveResetCode: "Artıq 6 rəqəmli kodum var",
       backToSignIn: "Girişə qayıt",
       newHere: "SpaceFarm-da yenisən?",
       createLink: "Qeydiyyatdan keç",

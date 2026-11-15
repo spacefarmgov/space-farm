@@ -24,6 +24,7 @@ import {
   runSimulationWithMode,
   saveUserProfile,
   updateFarmParcel,
+  type AuthSessionResponse,
   type WeatherAlertRecord,
   type WorkspaceLabMetrics,
   type WorkspaceParcel,
@@ -558,6 +559,18 @@ export function SpaceFarmProvider({ children }: { children: ReactNode }) {
       }
     },
     [applyAuthSession, locale, showToast],
+  );
+
+  const establishAuthSession = useCallback(
+    (session: AuthSessionResponse, toastText?: string) => {
+      applyAuthSession(session.token, session.user, session.parcels);
+      setAuthModalOpen(false);
+      setAuthAlertMessage(null);
+      if (toastText) {
+        showToast(toastText);
+      }
+    },
+    [applyAuthSession, showToast],
   );
 
   const logoutUser = useCallback(() => {
@@ -1278,6 +1291,7 @@ export function SpaceFarmProvider({ children }: { children: ReactNode }) {
     closeAuthModal,
     loginUser,
     registerUser,
+    establishAuthSession,
     logoutUser,
     triggerAuthAlert,
     theme,

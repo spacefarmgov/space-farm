@@ -452,6 +452,29 @@
         }
       }
     },
+    "/api/v1/auth/providers": {
+      "get": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Get Auth Providers",
+        "operationId": "get_auth_providers_api_v1_auth_providers_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Auth Providers Api V1 Auth Providers Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/auth/register": {
       "post": {
         "tags": [
@@ -478,6 +501,135 @@
                   "additionalProperties": true,
                   "type": "object",
                   "title": "Response Register Account Api V1 Auth Register Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/register/request-otp": {
+      "post": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Request Registration Otp",
+        "operationId": "request_registration_otp_api_v1_auth_register_request_otp_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Request Registration Otp Api V1 Auth Register Request Otp Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/register/verify-otp": {
+      "post": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Verify Registration Otp",
+        "operationId": "verify_registration_otp_api_v1_auth_register_verify_otp_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OtpVerifyPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Verify Registration Otp Api V1 Auth Register Verify Otp Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/google": {
+      "post": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Google Login",
+        "operationId": "google_login_api_v1_auth_google_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GoogleAuthPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Google Login Api V1 Auth Google Post"
                 }
               }
             }
@@ -564,6 +716,49 @@
                   "additionalProperties": true,
                   "type": "object",
                   "title": "Response Request Password Reset Api V1 Auth Forgot Password Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/reset-password": {
+      "post": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Reset Password With Code",
+        "operationId": "reset_password_with_code_api_v1_auth_reset_password_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetPasswordPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Reset Password With Code Api V1 Auth Reset Password Post"
                 }
               }
             }
@@ -2500,6 +2695,45 @@
         ],
         "title": "GeoPoint"
       },
+      "GoogleAuthPayload": {
+        "properties": {
+          "credential": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4096,
+                "minLength": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credential"
+          },
+          "access_token": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4096,
+                "minLength": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Access Token"
+          },
+          "region": {
+            "type": "string",
+            "maxLength": 120,
+            "title": "Region",
+            "default": "Ganja-Dashkasan"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "GoogleAuthPayload"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -2968,6 +3202,29 @@
         },
         "type": "object",
         "title": "ObjectiveInputs"
+      },
+      "OtpVerifyPayload": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 180,
+            "minLength": 5,
+            "title": "Email"
+          },
+          "code": {
+            "type": "string",
+            "maxLength": 4,
+            "minLength": 4,
+            "title": "Code"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "email",
+          "code"
+        ],
+        "title": "OtpVerifyPayload"
       },
       "ParcelCreatePayload": {
         "properties": {
@@ -3645,6 +3902,36 @@
           "reason"
         ],
         "title": "RejectedSummaryItem"
+      },
+      "ResetPasswordPayload": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 180,
+            "minLength": 5,
+            "title": "Email"
+          },
+          "code": {
+            "type": "string",
+            "maxLength": 6,
+            "minLength": 6,
+            "title": "Code"
+          },
+          "new_password": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 6,
+            "title": "New Password"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "email",
+          "code",
+          "new_password"
+        ],
+        "title": "ResetPasswordPayload"
       },
       "RotationPlan": {
         "properties": {
