@@ -1418,7 +1418,7 @@
 /* ================================================================
    RESPONSIVE TABLET & MOBILE BREAKPOINTS
    ================================================================ */
-@media (max-width: 1260px) {
+@media (max-width: 860px) {
   .sf-preset-strip {
     max-width: 100%;
   }

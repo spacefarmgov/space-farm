@@ -116,8 +116,32 @@ export function FieldIntelligencePage() {
         </div>
 
         <div className="sf-field-split">
-          {/* Left 68%: Satellite Field Visualization */}
+          {/* Left 68%: Interactive Map Search + Satellite Field Visualization */}
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div className="sf-panel sf-panel-compact" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <div className="sf-label-row" style={{ margin: 0 }}>
+                <span style={{ fontSize: 12.5, fontWeight: 600 }}>
+                  {locale === "az"
+                    ? "Xəritədə Koordinat / Google Maps Linki / Məkan Axtarışı"
+                    : "Map Search — Paste Coordinates, Google Maps Link, or City/District"}
+                </span>
+                <span className="mono" style={{ fontSize: 11, color: "var(--accent-cyan)" }}>
+                  GPS · DMS · URL
+                </span>
+              </div>
+              <LocationSearchControl
+                language={locale}
+                variant="panel"
+                onSelectLocation={(sel) => {
+                  if (sel.source === "az_district" && sel.presetId) {
+                    selectRegion(sel.presetId);
+                  } else {
+                    setCustomCoordinates(sel.lat, sel.lon, sel.label);
+                  }
+                }}
+              />
+            </div>
+
             <SatelliteFieldMap
               latitude={draft.latitude}
               longitude={draft.longitude}
@@ -160,30 +184,6 @@ export function FieldIntelligencePage() {
                   <Edit3 size={13} aria-hidden="true" />
                   <span>{t.actions.editLocation}</span>
                 </button>
-              </div>
-
-              <div className="sf-field">
-                <span className="sf-label-row">
-                  <span>
-                    {locale === "az"
-                      ? "Qlobal Axtarış / Koordinat / Maps Linki"
-                      : "Global Search / Coords / Maps Link"}
-                  </span>
-                  <span className="mono" style={{ fontSize: 11, color: "var(--accent-cyan)" }}>
-                    GPS · URL
-                  </span>
-                </span>
-                <LocationSearchControl
-                  language={locale}
-                  variant="panel"
-                  onSelectLocation={(sel) => {
-                    if (sel.source === "az_district" && sel.presetId) {
-                      selectRegion(sel.presetId);
-                    } else {
-                      setCustomCoordinates(sel.lat, sel.lon, sel.label);
-                    }
-                  }}
-                />
               </div>
 
               <label className="sf-field">

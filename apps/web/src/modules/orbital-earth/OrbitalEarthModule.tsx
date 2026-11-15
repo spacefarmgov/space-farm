@@ -1,10 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EarthSatelliteCanvas } from "./components/EarthSatelliteCanvas";
 import { SatelliteFieldMap } from "./components/SatelliteFieldMap";
-import {
-  LocationSearchControl,
-  type LocationSearchSelection,
-} from "../../components/map/LocationSearchControl";
+import type { LocationSearchSelection } from "../../components/map/LocationSearchControl";
 import { formatLatLon } from "../../utils/locationSearch";
 import {
   buildParcelAroundPoint,
@@ -488,7 +485,7 @@ export const OrbitalEarthModule: React.FC<OrbitalEarthModuleProps> = ({
           </div>
         )}
 
-        {/* Top Floating Aerospace Header, Global Search & Quick Region Switcher */}
+        {/* Top Floating Aerospace Header & Quick Region Switcher */}
         <header className="sf-hud-topbar">
           <div className="sf-hud-topbar-row">
             <div className="sf-brand-pill">
@@ -498,13 +495,6 @@ export const OrbitalEarthModule: React.FC<OrbitalEarthModuleProps> = ({
                 <span>{isAz ? "Orbital Kəşfiyyat Modulu" : "Orbital Earth Reconnaissance"}</span>
               </div>
             </div>
-
-            <LocationSearchControl
-              language={language}
-              apiBaseUrl={apiBaseUrl}
-              variant="hud"
-              onSelectLocation={handleSearchSelect}
-            />
 
             <div className="sf-hud-controls-right">
             {/* Spacecraft Selection (NASA TERRA / LANDSAT 8 Real 3D .glb + TLE) */}
