@@ -429,6 +429,29 @@
         }
       }
     },
+    "/api/orbital/districts": {
+      "get": {
+        "tags": [
+          "orbital-telemetry"
+        ],
+        "summary": "Return all 67 verified Azerbaijan agricultural districts with NASA POWER 2024 & SRTM telemetry",
+        "operationId": "get_orbital_districts_api_orbital_districts_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Orbital Districts Api Orbital Districts Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/auth/register": {
       "post": {
         "tags": [

@@ -8,6 +8,7 @@ import {
   ORBITAL_PRESETS,
   SATELLITE_FILTERS,
 } from "./data/presets";
+import { AZ_DISTRICTS, findAzDistrict } from "../../data/azDistricts";
 import {
   fetchGlobalRealWindGrid,
   fetchLiveSatelliteTles,
@@ -121,12 +122,20 @@ export const OrbitalEarthModule: React.FC<OrbitalEarthModuleProps> = ({
   );
 
   const locationLabel = useMemo(() => {
-    if (customLabel) return customLabel;
     if (activePreset) return language === "az" ? activePreset.nameAz : activePreset.nameEn;
+    if (selectedPresetId) {
+      const dist = findAzDistrict(selectedPresetId);
+      if (dist) {
+        return language === "az"
+          ? `${dist.nameAz} (${dist.economicRegionAz})`
+          : `${dist.nameEn} (${dist.economicRegionEn})`;
+      }
+    }
+    if (customLabel) return customLabel;
     return language === "az"
       ? `Sektor (${selectedLat.toFixed(2)}°N, ${selectedLon.toFixed(2)}°E)`
       : `Sector (${selectedLat.toFixed(2)}°N, ${selectedLon.toFixed(2)}°E)`;
-  }, [customLabel, activePreset, language, selectedLat, selectedLon]);
+  }, [customLabel, activePreset, selectedPresetId, language, selectedLat, selectedLon]);
 
   // Fetch live TLEs + Global Real Wind/Temperature Grid once on mount
   useEffect(() => {
@@ -436,11 +445,48 @@ export const OrbitalEarthModule: React.FC<OrbitalEarthModuleProps> = ({
                 className={`sf-preset-chip ${selectedPresetId === preset.id ? "is-active" : ""}`}
                 onClick={() => handleSelectLocation(preset.lat, preset.lon, preset.id)}
                 onDoubleClick={() => handleRequestDive(preset.lat, preset.lon, preset.id)}
-                title={isAz ? "Seçmək üçün 1× • Xəritəyə enmək üçün 2× klik" : "1× Click to target • 2× Double-click to dive"}
+                title={isAz ? "Əsas Bölgə ★ • Seçmək üçün 1× • Xəritəyə enmək üçün 2× klik" : "Primary Region ★ • 1× Target • 2× Dive"}
               >
-                {(isAz ? preset.nameAz : preset.nameEn).split(/[\s—/-]+/)[0]}
+                ★ {(isAz ? preset.nameAz : preset.nameEn).split(/[\s—/-]+/)[0]}
               </button>
             ))}
+            <select
+              className="sf-district-select"
+              aria-label={isAz ? "Bütün 67 rayon" : "All 67 districts"}
+              value={selectedPresetId ?? ""}
+              onChange={(e) => {
+                const id = e.target.value;
+                if (!id) return;
+                const primary = ORBITAL_PRESETS.find((p) => p.id === id);
+                if (primary) {
+                  handleSelectLocation(primary.lat, primary.lon, primary.id);
+                  return;
+                }
+                const dist = findAzDistrict(id);
+                if (dist) {
+                  const lbl = isAz
+                    ? `${dist.nameAz} (${dist.economicRegionAz})`
+                    : `${dist.nameEn} (${dist.economicRegionEn})`;
+                  handleSelectLocation(dist.lat, dist.lon, dist.id, lbl);
+                }
+              }}
+            >
+              <option value="">{isAz ? "67 Rayon…" : "67 Districts…"}</option>
+              <optgroup label={isAz ? "★ Əsas Bölgələr (4)" : "★ Primary Regions (4)"}>
+                {ORBITAL_PRESETS.map((preset) => (
+                  <option key={preset.id} value={preset.id}>
+                    ★ {isAz ? preset.nameAz : preset.nameEn}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label={isAz ? `Bütün ${AZ_DISTRICTS.length} Rayon (A–Z)` : `All ${AZ_DISTRICTS.length} Districts (A–Z)`}>
+                {AZ_DISTRICTS.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {isAz ? `${d.nameAz} · ${d.elevationM.toFixed(0)}m` : `${d.nameEn} · ${d.elevationM.toFixed(0)}m`}
+                  </option>
+                ))}
+              </optgroup>
+            </select>
           </nav>
 
           <div className="sf-hud-controls-right">

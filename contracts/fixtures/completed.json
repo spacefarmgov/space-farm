@@ -1,8 +1,8 @@
 {
   "contract_version": "0.1.0",
   "request_id": "fixture-completed-001",
-  "simulation_id": "fe4c1dbf-8979-43f7-b52d-8316f7fd4bb1",
-  "created_at": "2026-11-15T00:01:21.604449Z",
+  "simulation_id": "2a2c7621-8f48-4bc9-b3ae-c555812541b4",
+  "created_at": "2026-11-15T00:56:06.208386Z",
   "model_version": "rotation-engine-0.1.0",
   "rules_version": "agronomy-rules-0.1.0",
   "catalog_version": "crops-0.1.0",

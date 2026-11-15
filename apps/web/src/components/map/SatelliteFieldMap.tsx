@@ -6,6 +6,7 @@ import {
   getMerra2CellBounds,
   type VerifiedRegionPreset,
 } from "../../data/regions";
+import { AZ_DISTRICTS } from "../../data/azDistricts";
 
 interface SatelliteFieldMapProps {
   latitude: number;
@@ -204,11 +205,46 @@ export function SatelliteFieldMap({
       marker.addTo(group);
     }
 
+    // 3b. All 67 verified Azerbaijan districts (clickable NASA POWER + SRTM pins)
+    for (const district of AZ_DISTRICTS) {
+      const overlapsPrimary = VERIFIED_AZ_REGIONS.some(
+        (r) =>
+          Math.abs(r.latitude - district.lat) < 0.03 &&
+          Math.abs(r.longitude - district.lon) < 0.03,
+      );
+      const isActive =
+        Math.abs(district.lat - latitude) < 0.01 &&
+        Math.abs(district.lon - longitude) < 0.01;
+      if (overlapsPrimary && !isActive) continue;
+
+      const dMarker = L.circleMarker([district.lat, district.lon], {
+        radius: isActive ? 8 : 4,
+        color: isActive ? "#f6f5fb" : "#0ea5e9",
+        weight: isActive ? 2 : 1,
+        fillColor: isActive ? "#34d399" : "#38bdf8",
+        fillOpacity: isActive ? 0.95 : 0.72,
+      }).bindTooltip(
+        `${district.nameAz} · ${district.elevationM.toFixed(0)} m · ${district.annualRainMm.toFixed(0)} mm`,
+      );
+
+      if (onSelectRegion) {
+        dMarker.on("click", (e) => {
+          L.DomEvent.stopPropagation(e);
+          onSelectRegion(district.id);
+        });
+      }
+      dMarker.addTo(group);
+    }
+
     // 4. Custom selected point pin
     const matchesPreset = VERIFIED_AZ_REGIONS.some(
       (r) =>
         Math.abs(r.latitude - latitude) < 0.01 &&
         Math.abs(r.longitude - longitude) < 0.01,
+    ) || AZ_DISTRICTS.some(
+      (d) =>
+        Math.abs(d.lat - latitude) < 0.01 &&
+        Math.abs(d.lon - longitude) < 0.01,
     );
     if (!matchesPreset) {
       L.circleMarker([latitude, longitude], {

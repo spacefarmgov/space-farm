@@ -226,3 +226,15 @@ async def get_orbital_elevation(
     }
     _ELEV_CACHE[key] = (now_ts + (24 * 3600 if elevation_m is not None else 5 * 60), payload)
     return payload
+
+
+from app.data_adapters.az_districts import AZ_DISTRICTS, PRIMARY_REGION_IDS
+
+
+@router.get("/districts", summary="Return all 67 verified Azerbaijan agricultural districts with NASA POWER 2024 & SRTM telemetry")
+async def get_orbital_districts() -> dict[str, Any]:
+    return {
+        "primary_region_ids": list(PRIMARY_REGION_IDS),
+        "count": len(AZ_DISTRICTS),
+        "districts": list(AZ_DISTRICTS),
+    }

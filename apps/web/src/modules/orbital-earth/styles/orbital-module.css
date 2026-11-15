@@ -272,6 +272,33 @@
   display: none;
 }
 
+.sf-district-select {
+  appearance: none;
+  border: 1px solid rgba(192, 132, 252, 0.34);
+  background: rgba(15, 23, 42, 0.72);
+  color: #e9d5ff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 9px;
+  border-radius: 9px;
+  cursor: pointer;
+  max-width: 168px;
+  outline: none;
+  transition: border-color 0.16s ease, background 0.16s ease;
+}
+
+.sf-district-select:hover,
+.sf-district-select:focus-visible {
+  border-color: rgba(216, 180, 254, 0.65);
+  background: rgba(88, 28, 135, 0.38);
+}
+
+.sf-district-select option,
+.sf-district-select optgroup {
+  background: #0f172a;
+  color: #f8fafc;
+}
+
 .sf-preset-chip {
   border: 1px solid transparent;
   background: transparent;

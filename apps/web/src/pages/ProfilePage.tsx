@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { VERIFIED_AZ_REGIONS } from "../data/regions";
+import { AZ_DISTRICTS, findAzDistrict } from "../data/azDistricts";
 import { AppShell } from "../components/layout/AppShell";
 import { useSpaceFarm } from "../context/SpaceFarmContext";
 import type { IrrigationType, SoilTexture } from "../api/types";
@@ -153,16 +154,30 @@ export function ProfilePage() {
   function handlePresetSelect(regId: string) {
     setParcelRegionId(regId);
     const match = VERIFIED_AZ_REGIONS.find((r) => r.id === regId);
-    if (!match) return;
-    setParcelLat(String(match.latitude));
-    setParcelLon(String(match.longitude));
-    setParcelArea(String(match.areaHa));
-    setParcelIrrigation(match.irrigationType);
-    setParcelCrop(match.priorCropId);
-    setParcelPh(match.ph !== null ? String(match.ph) : "");
-    setParcelTexture(match.texture);
+    if (match) {
+      setParcelLat(String(match.latitude));
+      setParcelLon(String(match.longitude));
+      setParcelArea(String(match.areaHa));
+      setParcelIrrigation(match.irrigationType);
+      setParcelCrop(match.priorCropId);
+      setParcelPh(match.ph !== null ? String(match.ph) : "");
+      setParcelTexture(match.texture);
+      if (!parcelLabel.trim()) {
+        setParcelLabel(locale === "az" ? match.nameAz : match.nameEn);
+      }
+      return;
+    }
+    const dist = findAzDistrict(regId);
+    if (!dist) return;
+    setParcelLat(String(dist.lat));
+    setParcelLon(String(dist.lon));
+    setParcelArea("25");
+    setParcelIrrigation(dist.irrigation);
+    setParcelCrop("wheat");
+    setParcelPh(String(dist.defaultPh));
+    setParcelTexture(dist.defaultTexture);
     if (!parcelLabel.trim()) {
-      setParcelLabel(locale === "az" ? match.nameAz : match.nameEn);
+      setParcelLabel(locale === "az" ? dist.nameAz : dist.nameEn);
     }
   }
 
@@ -190,7 +205,10 @@ export function ProfilePage() {
       return;
     }
     const presetMatch = VERIFIED_AZ_REGIONS.find((r) => r.id === parcelRegionId);
-    const parsedPh = parcelPh.trim() ? Number(parcelPh) : (presetMatch?.ph ?? 6.8);
+    const distMatch = presetMatch ? null : findAzDistrict(parcelRegionId);
+    const parsedPh = parcelPh.trim()
+      ? Number(parcelPh)
+      : (presetMatch?.ph ?? distMatch?.defaultPh ?? 6.8);
     if (!Number.isFinite(parsedPh) || parsedPh < 0 || parsedPh > 14) {
       setParcelError(t.errors.invalidPh);
       return;
@@ -417,7 +435,9 @@ export function ProfilePage() {
               <option value="Aran (Barda–Yevlakh)" />
               <option value="Quba-Khachmaz" />
               <option value="Shaki-Zagatala" />
-              <option value="Bakı / Abşeron" />
+              {AZ_DISTRICTS.map((d) => (
+                <option key={d.id} value={locale === "az" ? d.nameAz : d.nameEn} />
+              ))}
             </datalist>
           </label>
 
@@ -537,7 +557,7 @@ export function ProfilePage() {
             <div className="sf-parcel-add-box">
               <div className="sf-parcel-add-head">
                 <strong>{p.newParcelTitle}</strong>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
                   {VERIFIED_AZ_REGIONS.map((reg) => (
                     <button
                       key={reg.id}
@@ -545,9 +565,33 @@ export function ProfilePage() {
                       className={`sf-btn sf-btn-sm ${parcelRegionId === reg.id ? "sf-btn-primary" : ""}`}
                       onClick={() => handlePresetSelect(reg.id)}
                     >
-                      {locale === "az" ? reg.nameAz : reg.nameEn}
+                      ★ {locale === "az" ? reg.nameAz : reg.nameEn}
                     </button>
                   ))}
+                  <select
+                    className="sf-prof-select"
+                    aria-label={locale === "az" ? "Bütün 67 rayon" : "All 67 districts"}
+                    value={parcelRegionId}
+                    onChange={(e) => {
+                      if (e.target.value) handlePresetSelect(e.target.value);
+                    }}
+                    style={{ maxWidth: 230, fontSize: 12, padding: "6px 10px" }}
+                  >
+                    <optgroup label={locale === "az" ? "★ Əsas Bölgələr (4)" : "★ Primary Regions (4)"}>
+                      {VERIFIED_AZ_REGIONS.map((reg) => (
+                        <option key={reg.id} value={reg.id}>
+                          ★ {locale === "az" ? reg.nameAz : reg.nameEn}
+                        </option>
+                      ))}
+                    </optgroup>
+                    <optgroup label={locale === "az" ? `Bütün ${AZ_DISTRICTS.length} Rayon` : `All ${AZ_DISTRICTS.length} Districts`}>
+                      {AZ_DISTRICTS.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {locale === "az" ? `${d.nameAz} (${d.elevationM.toFixed(0)}m)` : `${d.nameEn} (${d.elevationM.toFixed(0)}m)`}
+                        </option>
+                      ))}
+                    </optgroup>
+                  </select>
                 </div>
               </div>
 

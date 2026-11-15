@@ -1,8 +1,8 @@
 {
   "contract_version": "0.1.0",
   "request_id": "fixture-needs-data-001",
-  "simulation_id": "949359e3-a895-46b6-9e8b-77e15eaada4d",
-  "created_at": "2026-11-15T00:01:21.645198Z",
+  "simulation_id": "7a55c765-e0d0-41d5-893c-0d7ffadf5649",
+  "created_at": "2026-11-15T00:56:06.222901Z",
   "model_version": "rotation-engine-0.1.0",
   "rules_version": "agronomy-rules-0.1.0",
   "catalog_version": "crops-0.1.0",

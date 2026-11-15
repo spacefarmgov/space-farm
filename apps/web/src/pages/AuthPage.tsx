@@ -6,6 +6,7 @@ import { HeroTypewriter } from "../components/features/HeroTypewriter";
 import { SpiderWebCanvas } from "../components/layout/SpiderWebCanvas";
 import { useSpaceFarm } from "../context/SpaceFarmContext";
 import { VERIFIED_AZ_REGIONS } from "../data/regions";
+import { AZ_DISTRICTS } from "../data/azDistricts";
 import "../styles/auth-page.css";
 
 export type AuthRouteMode = "login" | "register" | "forgot-password";
@@ -450,25 +451,50 @@ export function AuthPage({ initialMode }: { initialMode: AuthRouteMode }) {
                           onChange={(e) => setRegion(e.target.value)}
                           style={{ cursor: "pointer" }}
                         >
-                          {VERIFIED_AZ_REGIONS.map((item) => {
-                            const regionVal =
-                              item.id === "ganja-dashkasan"
-                                ? "Ganja-Dashkasan"
-                                : item.id === "aran-barda"
-                                  ? "Aran-Barda"
-                                  : item.id === "quba-khachmaz"
-                                    ? "Quba-Khachmaz"
-                                    : "Sheki-Zaqatala";
-                            return (
+                          <optgroup
+                            label={locale === "az" ? "★ Əsas Bölgələr (4)" : "★ Primary Regions (4)"}
+                            style={{ backgroundColor: "#0d0a1c", color: "#c4b5fd" }}
+                          >
+                            {VERIFIED_AZ_REGIONS.map((item) => {
+                              const regionVal =
+                                item.id === "ganja-dashkasan"
+                                  ? "Ganja-Dashkasan"
+                                  : item.id === "aran-barda"
+                                    ? "Aran-Barda"
+                                    : item.id === "quba-khachmaz"
+                                      ? "Quba-Khachmaz"
+                                      : "Sheki-Zaqatala";
+                              return (
+                                <option
+                                  key={item.id}
+                                  value={regionVal}
+                                  style={{ backgroundColor: "#0d0a1c", color: "#f6f5fb" }}
+                                >
+                                  ★ {locale === "az" ? item.regionLabelAz : item.regionLabelEn}
+                                </option>
+                              );
+                            })}
+                          </optgroup>
+                          <optgroup
+                            label={
+                              locale === "az"
+                                ? `Bütün ${AZ_DISTRICTS.length} Rayon (A–Z)`
+                                : `All ${AZ_DISTRICTS.length} Districts (A–Z)`
+                            }
+                            style={{ backgroundColor: "#0d0a1c", color: "#94a3b8" }}
+                          >
+                            {AZ_DISTRICTS.map((d) => (
                               <option
-                                key={item.id}
-                                value={regionVal}
+                                key={d.id}
+                                value={locale === "az" ? d.nameAz : d.nameEn}
                                 style={{ backgroundColor: "#0d0a1c", color: "#f6f5fb" }}
                               >
-                                {locale === "az" ? item.regionLabelAz : item.regionLabelEn}
+                                {locale === "az"
+                                  ? `${d.nameAz} (${d.economicRegionAz})`
+                                  : `${d.nameEn} (${d.economicRegionEn})`}
                               </option>
-                            );
-                          })}
+                            ))}
+                          </optgroup>
                         </select>
                       </div>
                     </div>

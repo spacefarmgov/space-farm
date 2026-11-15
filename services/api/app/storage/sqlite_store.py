@@ -128,6 +128,19 @@ def _resolve_region_seed(region_text: str | None) -> tuple[str, str, float, floa
         return REGION_DEFAULTS["quba-khachmaz"]
     if "shaki" in raw or "şəki" in raw or "zagatala" in raw or "zaqatala" in raw:
         return REGION_DEFAULTS["shaki-zagatala"]
+    if raw and not ("ganja" in raw or "gəncə" in raw or "dashkasan" in raw or "daşkəsən" in raw):
+        from app.data_adapters.az_districts import find_az_district
+
+        district = find_az_district(region_text)
+        if district is not None:
+            return (
+                district["id"],
+                f"{district['name_az']} Sahə 01",
+                float(district["latitude"]),
+                float(district["longitude"]),
+                42.0,
+                str(district["irrigation_type"]),
+            )
     return REGION_DEFAULTS["ganja-dashkasan"]
 
 

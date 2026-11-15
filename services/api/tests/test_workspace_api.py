@@ -50,14 +50,14 @@ class WorkspaceApiTests(unittest.TestCase):
             os.environ["APP_ENV"] = self._old_env
         get_settings.cache_clear()
 
-    def _register_sample(self, email: str = "ayla@agronomy.az") -> tuple[str, dict, list[dict]]:
+    def _register_sample(self, email: str = "ayla@agronomy.az", region: str = "Ganja-Dashkasan") -> tuple[str, dict, list[dict]]:
         resp = self.client.post(
             "/api/v1/auth/register",
             json={
                 "name": "Ayla Huseynova",
                 "email": email,
                 "password": "securepassword1",
-                "region": "Ganja-Dashkasan",
+                "region": region,
             },
         )
         self.assertEqual(resp.status_code, 201, resp.text)
@@ -417,5 +417,32 @@ class WorkspaceApiTests(unittest.TestCase):
         )
         self.assertEqual(unknown_res.status_code, 200)
         self.assertTrue(unknown_res.json()["ok"])
+
+    def test_orbital_districts_and_registration_seed(self) -> None:
+        dist_res = self.client.get("/api/orbital/districts")
+        self.assertEqual(dist_res.status_code, 200, dist_res.text)
+        dist_body = dist_res.json()
+        self.assertEqual(dist_body["count"], 67)
+        self.assertEqual(len(dist_body["districts"]), 67)
+        self.assertIn("ganja-dashkasan", dist_body["primary_region_ids"])
+
+        astara_entry = next((d for d in dist_body["districts"] if d["id"] == "astara"), None)
+        self.assertIsNotNone(astara_entry)
+
+        token, user, reg_parcels = self._register_sample(email="astara-farmer@farmer.az", region="Astara")
+        self.assertEqual(user["region"], "Astara")
+        self.assertGreaterEqual(len(reg_parcels), 1)
+        self.assertAlmostEqual(float(reg_parcels[0]["latitude"]), 38.456, places=3)
+        self.assertAlmostEqual(float(reg_parcels[0]["longitude"]), 48.875, places=3)
+
+        headers = {"Authorization": f"Bearer {token}"}
+        prof_res = self.client.get("/api/v1/profile", headers=headers)
+        self.assertEqual(prof_res.status_code, 200, prof_res.text)
+        parcels = prof_res.json()["parcels"]
+        self.assertGreaterEqual(len(parcels), 1)
+        self.assertAlmostEqual(float(parcels[0]["latitude"]), 38.456, places=3)
+        self.assertAlmostEqual(float(parcels[0]["longitude"]), 48.875, places=3)
+        self.assertEqual(parcels[0]["region_id"], "astara")
+
 
 

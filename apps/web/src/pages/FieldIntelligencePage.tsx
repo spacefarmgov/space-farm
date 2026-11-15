@@ -6,6 +6,8 @@ import type { IrrigationType, SoilSourceType, SoilTexture } from "../api/types";
 import { AppShell } from "../components/layout/AppShell";
 import { SatelliteFieldMap } from "../components/map/SatelliteFieldMap";
 import { useSpaceFarm } from "../context/SpaceFarmContext";
+import { VERIFIED_AZ_REGIONS } from "../data/regions";
+import { AZ_DISTRICTS } from "../data/azDistricts";
 
 const FALLBACK_CROP_OPTIONS = [
   { crop_id: "wheat", name: "Wheat" },
@@ -157,6 +159,53 @@ export function FieldIntelligencePage() {
                   <span>{t.actions.editLocation}</span>
                 </button>
               </div>
+
+              <label className="sf-field">
+                <span className="sf-label-row">
+                  <span>{locale === "az" ? "Rayon / Əsas Bölgə (67 Rayon)" : "District / Primary Region (67)"}</span>
+                  <span className="mono" style={{ fontSize: 11, color: "var(--accent-cyan)" }}>
+                    {locale === "az" ? "NASA + SRTM" : "NASA + SRTM"}
+                  </span>
+                </span>
+                <select
+                  className="sf-select"
+                  aria-label={locale === "az" ? "Rayon seçimi (67 rayon)" : "District selector (67 districts)"}
+                  value={draft.regionPresetId ?? ""}
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      selectRegion(e.target.value);
+                    }
+                  }}
+                >
+                  {!draft.regionPresetId && (
+                    <option value="">
+                      {locale === "az" ? "— Xüsusi koordinat —" : "— Custom coordinates —"}
+                    </option>
+                  )}
+                  <optgroup label={locale === "az" ? "★ Əsas Bölgələr (4)" : "★ Primary Regions (4)"}>
+                    {VERIFIED_AZ_REGIONS.map((reg) => (
+                      <option key={reg.id} value={reg.id}>
+                        ★ {locale === "az" ? reg.nameAz : reg.nameEn}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup
+                    label={
+                      locale === "az"
+                        ? `Bütün ${AZ_DISTRICTS.length} Rayon (A–Z)`
+                        : `All ${AZ_DISTRICTS.length} Districts (A–Z)`
+                    }
+                  >
+                    {AZ_DISTRICTS.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {locale === "az"
+                          ? `${d.nameAz} · ${d.elevationM.toFixed(0)} m · ${d.annualRainMm.toFixed(0)} mm`
+                          : `${d.nameEn} · ${d.elevationM.toFixed(0)} m · ${d.annualRainMm.toFixed(0)} mm`}
+                      </option>
+                    ))}
+                  </optgroup>
+                </select>
+              </label>
 
               <label className="sf-field">
                 <span className="sf-label-row">{t.field.fieldLabelInput}</span>

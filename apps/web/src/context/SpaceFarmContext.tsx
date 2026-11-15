@@ -67,6 +67,11 @@ export type {
   SpaceFarmNotification,
   ThemeMode,
 } from "./spaceFarmContextObj";
+import {
+  createDraftFromAzDistrict,
+  findAzDistrict,
+  resolveRegionPresetOrDistrict,
+} from "../data/azDistricts";
 
 const LOCALE_STORAGE_KEY = "spacefarm_ui_locale";
 const THEME_STORAGE_KEY = "spacefarm_ui_theme";
@@ -76,7 +81,7 @@ const AUTH_TOKEN_KEY = "spacefarm_auth_token";
 const SIDEBAR_EXPANDED_KEY = "spacefarm_sidebar_expanded";
 
 function mapParcelToDraftPatch(parcel: WorkspaceParcel): Partial<FieldDraft> {
-  const matchedRegion = VERIFIED_AZ_REGIONS.find((r) => r.id === parcel.region_id) ?? null;
+  const matchedRegion = resolveRegionPresetOrDistrict(parcel.region_id);
   const fallbackLab = matchedRegion?.labMetrics ?? VERIFIED_AZ_REGIONS[0].labMetrics;
   const rawLab = parcel.lab_metrics ?? {};
   const soilPh = parcel.soil_ph ?? matchedRegion?.ph ?? 6.8;
@@ -721,7 +726,7 @@ export function SpaceFarmProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const selectedRegion = useMemo(
-    () => VERIFIED_AZ_REGIONS.find((r) => r.id === draft.regionPresetId) ?? null,
+    () => resolveRegionPresetOrDistrict(draft.regionPresetId),
     [draft.regionPresetId],
   );
 
@@ -740,8 +745,9 @@ export function SpaceFarmProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const selectRegion = useCallback((regionId: string) => {
-    const region = VERIFIED_AZ_REGIONS.find((r) => r.id === regionId);
-    if (!region) return;
+    const primary = VERIFIED_AZ_REGIONS.find((r) => r.id === regionId) ?? null;
+    const district = primary ? null : findAzDistrict(regionId);
+    if (!primary && !district) return;
     climateAbortRef.current?.abort();
     tsAbortRef.current?.abort();
     simAbortRef.current?.abort();
@@ -749,7 +755,7 @@ export function SpaceFarmProvider({ children }: { children: ReactNode }) {
     if (baselineSim) {
       setPreviousSimFieldLabel(draft.label);
     }
-    setDraft(createDraftFromRegion(region));
+    setDraft(primary ? createDraftFromRegion(primary) : createDraftFromAzDistrict(district!, locale));
     setClimateLoading(false);
     setTimeseriesLoading(false);
     setBaselineLoading(false);
@@ -759,7 +765,7 @@ export function SpaceFarmProvider({ children }: { children: ReactNode }) {
     setTimeseriesError(null);
     setBaselineError(null);
     setStressError(null);
-  }, [baselineSim, draft.label]);
+  }, [baselineSim, draft.label, locale]);
 
   const setCustomCoordinates = useCallback(
     (lat: number, lon: number, label?: string) => {
@@ -945,6 +951,8 @@ export function SpaceFarmProvider({ children }: { children: ReactNode }) {
       const matchedPreset = mappedRegionId
         ? VERIFIED_AZ_REGIONS.find((r) => r.id === mappedRegionId) ?? null
         : null;
+      const matchedDistrict =
+        !matchedPreset && mappedRegionId ? findAzDistrict(mappedRegionId) : null;
 
       const cleanLat = Number(selection.lat.toFixed(4));
       const cleanLon = Number(selection.lon.toFixed(4));
@@ -958,18 +966,23 @@ export function SpaceFarmProvider({ children }: { children: ReactNode }) {
             label: selection.label || matchedPreset.nameEn,
             areaHa: cleanAreaHa,
           }
-        : {
-            ...draft,
-            regionPresetId: null,
-            farmId: `orbital-${cleanLat.toFixed(2)}-${cleanLon.toFixed(2)}`,
-            label:
-              selection.label ||
-              `Orbital Sector (${cleanLat.toFixed(2)}°N, ${cleanLon.toFixed(2)}°E)`,
-            hasBoundary: false,
-            latitude: cleanLat,
-            longitude: cleanLon,
-            areaHa: cleanAreaHa,
-          };
+        : matchedDistrict
+          ? {
+              ...createDraftFromAzDistrict(matchedDistrict, locale),
+              areaHa: cleanAreaHa,
+            }
+          : {
+              ...draft,
+              regionPresetId: null,
+              farmId: `orbital-${cleanLat.toFixed(2)}-${cleanLon.toFixed(2)}`,
+              label:
+                selection.label ||
+                `Orbital Sector (${cleanLat.toFixed(2)}°N, ${cleanLon.toFixed(2)}°E)`,
+              hasBoundary: false,
+              latitude: cleanLat,
+              longitude: cleanLon,
+              areaHa: cleanAreaHa,
+            };
 
       setDraft(nextDraft);
       setClimateLoading(false);
@@ -988,7 +1001,7 @@ export function SpaceFarmProvider({ children }: { children: ReactNode }) {
       }
       return nextDraft;
     },
-    [baselineSim, draft, loadClimateForField, runBaselineSimulation],
+    [baselineSim, draft, loadClimateForField, locale, runBaselineSimulation],
   );
 
   const runStressSimulation = useCallback(

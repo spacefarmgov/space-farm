@@ -26,6 +26,11 @@ import { SpiderWebCanvas } from "../components/layout/SpiderWebCanvas";
 import { CropIcon } from "../components/ui/StatusPrimitives";
 import { useSpaceFarm } from "../context/SpaceFarmContext";
 import { REPO_GITHUB_URL, VERIFIED_AZ_REGIONS } from "../data/regions";
+import {
+  AZ_DISTRICTS,
+  findAzDistrict,
+  resolveRegionPresetOrDistrict,
+} from "../data/azDistricts";
 
 const LANDING_CROPS = [
   { id: "wheat", nameEn: "Wheat", nameAz: "Buğda", family: "Poaceae", tagEn: "Cereal staple", tagAz: "Əsas taxıl" },
@@ -60,9 +65,20 @@ export function HomePage() {
   const [activeSolutionId, setActiveSolutionId] = useState<string>(t.landing.solutionTabs[0]?.id ?? "explore");
   const [openFaqIdx, setOpenFaqIdx] = useState<number>(0);
 
+  const featuredDistrict = findAzDistrict(featuredRegionId);
   const featuredRegion =
+    resolveRegionPresetOrDistrict(featuredRegionId) ?? VERIFIED_AZ_REGIONS[0];
+  const featuredPrimaryLabRegion =
     VERIFIED_AZ_REGIONS.find((r) => r.id === featuredRegionId) ?? VERIFIED_AZ_REGIONS[0];
-  const featuredClim = REGION_QUICK_CLIMATE[featuredRegion.id] ?? { rainMm: "506.5 mm", meanC: "10.6 °C" };
+  const isPrimaryFeatured = Boolean(REGION_QUICK_CLIMATE[featuredRegion.id]);
+  const featuredClim = REGION_QUICK_CLIMATE[featuredRegion.id] ?? (
+    featuredDistrict
+      ? {
+          rainMm: `${featuredDistrict.annualRainMm.toFixed(1)} mm`,
+          meanC: `${featuredDistrict.meanTempC.toFixed(1)} °C`,
+        }
+      : { rainMm: "506.5 mm", meanC: "10.6 °C" }
+  );
   const activeSolution =
     t.landing.solutionTabs.find((item) => item.id === activeSolutionId) ?? t.landing.solutionTabs[0];
 
@@ -357,9 +373,45 @@ export function HomePage() {
                   className={`sf-btn sf-btn-sm ${featuredRegion.id === reg.id ? "sf-btn-primary" : ""}`}
                   onClick={() => setFeaturedRegionId(reg.id)}
                 >
-                  {locale === "az" ? reg.nameAz : reg.nameEn}
+                  ★ {locale === "az" ? reg.nameAz : reg.nameEn}
                 </button>
               ))}
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <select
+                className="sf-select"
+                aria-label={locale === "az" ? "Bütün 67 rayon" : "All 67 districts"}
+                value={featuredRegion.id}
+                onChange={(e) => setFeaturedRegionId(e.target.value)}
+                style={{ minWidth: 260, flex: "1 1 240px", fontSize: 13 }}
+              >
+                <optgroup label={locale === "az" ? "★ Əsas Bölgələr (4)" : "★ Primary Regions (4)"}>
+                  {VERIFIED_AZ_REGIONS.map((reg) => (
+                    <option key={reg.id} value={reg.id}>
+                      ★ {locale === "az" ? reg.nameAz : reg.nameEn}
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup
+                  label={
+                    locale === "az"
+                      ? `Bütün ${AZ_DISTRICTS.length} Rayon (A–Z · NASA POWER + SRTM)`
+                      : `All ${AZ_DISTRICTS.length} Districts (A–Z · NASA POWER + SRTM)`
+                  }
+                >
+                  {AZ_DISTRICTS.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {locale === "az"
+                        ? `${d.nameAz} (${d.economicRegionAz}) · ${d.elevationM.toFixed(0)} m`
+                        : `${d.nameEn} (${d.economicRegionEn}) · ${d.elevationM.toFixed(0)} m`}
+                    </option>
+                  ))}
+                </optgroup>
+              </select>
+              <span className="sf-badge sf-badge-cyan" style={{ fontSize: 11 }}>
+                {locale === "az" ? "67/67 Rayon · NASA + SRTM Doğrulanıb" : "67/67 Districts · NASA + SRTM Verified"}
+              </span>
             </div>
 
             {/* Clean Real Metrics Grid for Selected Region */}
@@ -373,9 +425,17 @@ export function HomePage() {
                 <strong>{featuredClim.rainMm}</strong>
               </div>
               <div className="sf-lab-chip">
-                <span>Lab pH · Humus</span>
+                <span>
+                  {!isPrimaryFeatured && featuredDistrict
+                    ? locale === "az"
+                      ? "SRTM · Aqro pH"
+                      : "SRTM · Agro pH"
+                    : "Lab pH · Humus"}
+                </span>
                 <strong style={{ color: "#6ee7b7" }}>
-                  {featuredRegion.ph.toFixed(1)} · {featuredRegion.labMetrics.organicMatterPct}%
+                  {!isPrimaryFeatured && featuredDistrict
+                    ? `${featuredDistrict.elevationM.toFixed(0)} m · pH ${featuredDistrict.defaultPh.toFixed(1)}`
+                    : `${featuredRegion.ph.toFixed(1)} · ${featuredRegion.labMetrics.organicMatterPct}%`}
                 </strong>
               </div>
             </div>
@@ -413,9 +473,13 @@ export function HomePage() {
                 </span>
               </div>
               <div style={{ fontSize: 14.5, fontWeight: 600 }}>
-                {locale === "az"
-                  ? `Lab Hesabat: ${featuredRegion.soilSourceRef} · N ${featuredRegion.labMetrics.nitrogenMgKg} / P ${featuredRegion.labMetrics.phosphorusMgKg} / K ${featuredRegion.labMetrics.potassiumMgKg} mq/kq`
-                  : `Lab Report: ${featuredRegion.soilSourceRef} · N ${featuredRegion.labMetrics.nitrogenMgKg} / P ${featuredRegion.labMetrics.phosphorusMgKg} / K ${featuredRegion.labMetrics.potassiumMgKg} mg/kg`}
+                {!isPrimaryFeatured && featuredDistrict
+                  ? locale === "az"
+                    ? `NASA POWER 2024: ${featuredDistrict.meanTempC.toFixed(1)} °C · ${featuredDistrict.annualRainMm.toFixed(1)} mm · SRTM ${featuredDistrict.elevationM.toFixed(0)} m · pH ${featuredDistrict.defaultPh.toFixed(1)}`
+                    : `NASA POWER 2024: ${featuredDistrict.meanTempC.toFixed(1)} °C · ${featuredDistrict.annualRainMm.toFixed(1)} mm · SRTM ${featuredDistrict.elevationM.toFixed(0)} m · pH ${featuredDistrict.defaultPh.toFixed(1)}`
+                  : locale === "az"
+                    ? `Lab Hesabat: ${featuredRegion.soilSourceRef} · N ${featuredRegion.labMetrics.nitrogenMgKg} / P ${featuredRegion.labMetrics.phosphorusMgKg} / K ${featuredRegion.labMetrics.potassiumMgKg} mq/kq`
+                    : `Lab Report: ${featuredRegion.soilSourceRef} · N ${featuredRegion.labMetrics.nitrogenMgKg} / P ${featuredRegion.labMetrics.phosphorusMgKg} / K ${featuredRegion.labMetrics.potassiumMgKg} mg/kg`}
               </div>
             </div>
           </div>
@@ -533,27 +597,27 @@ export function HomePage() {
               <div className="sf-lab-chip-grid">
                 <div className="sf-lab-chip">
                   <span>{locale === "az" ? "Torpaq pH" : "Soil pH"}</span>
-                  <strong>{featuredRegion.ph.toFixed(1)}</strong>
+                  <strong>{featuredPrimaryLabRegion.ph.toFixed(1)}</strong>
                 </div>
                 <div className="sf-lab-chip">
                   <span>{locale === "az" ? "Humus" : "Organic Humus"}</span>
-                  <strong>{featuredRegion.labMetrics.organicMatterPct.toFixed(1)}%</strong>
+                  <strong>{featuredPrimaryLabRegion.labMetrics.organicMatterPct.toFixed(1)}%</strong>
                 </div>
                 <div className="sf-lab-chip">
                   <span>{locale === "az" ? "Duzluluq EC" : "Salinity EC"}</span>
-                  <strong>{featuredRegion.labMetrics.ecDsM.toFixed(2)} dS/m</strong>
+                  <strong>{featuredPrimaryLabRegion.labMetrics.ecDsM.toFixed(2)} dS/m</strong>
                 </div>
                 <div className="sf-lab-chip">
                   <span>{locale === "az" ? "Azot (N)" : "Nitrogen (N)"}</span>
-                  <strong>{featuredRegion.labMetrics.nitrogenMgKg} mq/kq</strong>
+                  <strong>{featuredPrimaryLabRegion.labMetrics.nitrogenMgKg} mq/kq</strong>
                 </div>
                 <div className="sf-lab-chip">
                   <span>{locale === "az" ? "Fosfor (P₂O₅)" : "Phosphorus"}</span>
-                  <strong>{featuredRegion.labMetrics.phosphorusMgKg} mq/kq</strong>
+                  <strong>{featuredPrimaryLabRegion.labMetrics.phosphorusMgKg} mq/kq</strong>
                 </div>
                 <div className="sf-lab-chip">
                   <span>{locale === "az" ? "Kalium (K₂O)" : "Potassium"}</span>
-                  <strong>{featuredRegion.labMetrics.potassiumMgKg} mq/kq</strong>
+                  <strong>{featuredPrimaryLabRegion.labMetrics.potassiumMgKg} mq/kq</strong>
                 </div>
               </div>
 
