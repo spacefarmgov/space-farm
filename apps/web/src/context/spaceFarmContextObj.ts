@@ -57,6 +57,7 @@ export interface OrbitalSelectionInput {
   label: string;
   presetId: string | null;
   areaHa: number;
+  polygon?: Array<[number, number]> | null;
 }
 
 export interface SpaceFarmContextValue {
@@ -150,9 +151,11 @@ export interface SpaceFarmContextValue {
     soil_texture: "unknown" | "sand" | "loam" | "clay" | "other";
     prior_crop_id: string;
     lab_metrics?: WorkspaceLabMetrics;
+    boundary_polygon?: Array<[number, number]> | null;
     is_primary: boolean;
   }) => Promise<{ ok: boolean; error?: string }>;
   saveActiveParcelInputs: (overrideDraft?: FieldDraft) => Promise<{ ok: boolean; error?: string }>;
+  saveDraftAsNewParcel: (overrideDraft?: FieldDraft) => Promise<{ ok: boolean; error?: string }>;
   setActiveParcel: (parcelId: string) => Promise<{ ok: boolean; error?: string }>;
   removeParcel: (parcelId: string) => Promise<{ ok: boolean; error?: string }>;
   loginUser: (email: string, password: string) => Promise<AuthActionResult>;
@@ -163,6 +166,7 @@ export interface SpaceFarmContextValue {
     region?: string,
   ) => Promise<AuthActionResult>;
   establishAuthSession: (session: AuthSessionResponse, toastMessage?: string) => void;
+  loginAsDemoJudge: (region?: string) => Promise<AuthActionResult>;
   logoutUser: () => void;
   triggerAuthAlert: (targetPath?: string) => void;
   theme: ThemeMode;

@@ -7,7 +7,7 @@ Yenilənmə: 14.11.2026
 Qeyd: Həmin tarixi tədqiqat sənədində layihə ilkin olaraq *AgroRotation Intelligence* işçi adı ilə qeyd olunmuşdur; ictimai GitHub və Space Apps təqdimatı üçün layihə adı **Space Farm** (`space-farm`) kimi vahidləşdirilmişdir. PDF-nin özü “real API sorğusu icra etmədiyini” bildirir. Bu paket də real data yükləndiyini iddia etmir.
 
 ## Yoxlanmış texniki və yarış sənədləri
-1. NASA Space Apps Challenge 2026 — *Field Shift: Adapting Farms with NASA Data*: https://www.spaceappschallenge.org/2026/challenges/field-shift-adapting-farms-with-nasa-data/
+1. NASA Space Apps Challenge 2026 — *Field Shift: Adapting Farms with NASA Data*: https://www.spaceappschallenge.org/2026/challenges/adapting-farms-with-nasa-data/
 2. NASA POWER Daily API: https://power.larc.nasa.gov/docs/services/api/temporal/daily/
 3. NASA POWER API Overview & Parameters: https://power.larc.nasa.gov/docs/services/api/ • https://power.larc.nasa.gov/parameters/
 4. NASA Earth Science Open Data Policy & Attribution: NASA ESDS/EOSDIS açıq məlumat siyasəti (EOSDIS üçün CC0; POWER üçün açıq istifadə / CC BY 4.0 istinad tələbləri; NASA tərəfdaşlığı/təsdiqi iddiası olmadan).

@@ -13,6 +13,7 @@ import {
   activateFarmParcel,
   createFarmParcel,
   deleteFarmParcel,
+  demoLoginAccount,
   fetchAlertsOverview,
   fetchClimateFeaturesWithMode,
   fetchClimateTimeseriesWithMode,
@@ -76,6 +77,7 @@ import {
   findAzDistrict,
   resolveRegionPresetOrDistrict,
 } from "../data/azDistricts";
+import { formatLatLon } from "../utils/locationSearch";
 
 const LOCALE_STORAGE_KEY = "spacefarm_ui_locale";
 const THEME_STORAGE_KEY = "spacefarm_ui_theme";
@@ -91,11 +93,18 @@ function mapParcelToDraftPatch(parcel: WorkspaceParcel): Partial<FieldDraft> {
   const soilPh = parcel.soil_ph ?? matchedRegion?.ph ?? 6.8;
   const irrig = parcel.irrigation_type !== "unknown" ? parcel.irrigation_type : matchedRegion?.irrigationType ?? "irrigated";
   const texture = parcel.soil_texture !== "unknown" ? parcel.soil_texture : matchedRegion?.texture ?? "loam";
+  const storedPolygon =
+    parcel.boundary_polygon && parcel.boundary_polygon.length >= 3
+      ? parcel.boundary_polygon.map(([lat, lon]) => [Number(lat), Number(lon)] as [number, number])
+      : matchedRegion?.illustrativePolygon
+        ? matchedRegion.illustrativePolygon.map(([lat, lon]) => [lat, lon] as [number, number])
+        : null;
   return {
     regionPresetId: matchedRegion ? matchedRegion.id : null,
     farmId: parcel.id,
     label: parcel.label,
-    hasBoundary: Boolean(matchedRegion?.hasBoundary),
+    hasBoundary: Boolean(storedPolygon && storedPolygon.length >= 3),
+    boundaryPolygon: storedPolygon,
     latitude: parcel.latitude,
     longitude: parcel.longitude,
     areaHa: parcel.area_ha,
@@ -340,6 +349,7 @@ export function SpaceFarmProvider({ children }: { children: ReactNode }) {
   const authTokenRef = useRef<string | null>(authToken);
   const localeRef = useRef<Locale>(locale);
   const unauthorizedHandledRef = useRef(false);
+  const demoLoginPromiseRef = useRef<Promise<AuthActionResult> | null>(null);
 
   useEffect(() => {
     authTokenRef.current = authToken;
@@ -747,6 +757,51 @@ export function SpaceFarmProvider({ children }: { children: ReactNode }) {
     [authToken, locale],
   );
 
+  const buildParcelPayloadFromDraft = useCallback((target: FieldDraft) => {
+    const labPayload: WorkspaceLabMetrics = {
+      organic_matter_pct: Number(target.labMetrics.organicMatterPct),
+      nitrogen_mg_kg: Number(target.labMetrics.nitrogenMgKg),
+      phosphorus_mg_kg: Number(target.labMetrics.phosphorusMgKg),
+      potassium_mg_kg: Number(target.labMetrics.potassiumMgKg),
+      ec_ds_m: Number(target.labMetrics.ecDsM),
+      moisture_capacity_pct: Number(target.labMetrics.moistureCapacityPct),
+      depth_top_cm: Number(target.soilDepthTopCm || 0),
+      depth_bottom_cm: Number(target.soilDepthBottomCm || 30),
+      sample_date: target.soilSampleDate || "2025-03-14",
+      lab_report_id: target.soilSourceRef || "LAB-AZ-2025",
+      soil_source_type: target.soilSourceType === "laboratory" ? "laboratory" : "user_reported",
+    };
+    const irrigType: "rainfed" | "irrigated" =
+      target.irrigationType === "rainfed" ? "rainfed" : "irrigated";
+    const texType: "sand" | "loam" | "clay" | "other" =
+      target.soilTexture === "sand" ||
+      target.soilTexture === "clay" ||
+      target.soilTexture === "other"
+        ? target.soilTexture
+        : "loam";
+    const boundaryPolygon: Array<[number, number]> | null =
+      target.boundaryPolygon && target.boundaryPolygon.length >= 3
+        ? target.boundaryPolygon.map(
+            ([lat, lon]) =>
+              [Number(lat.toFixed(5)), Number(lon.toFixed(5))] as [number, number],
+          )
+        : null;
+    return {
+      label: target.label.trim() || formatLatLon(target.latitude, target.longitude, 3),
+      region_id: target.regionPresetId ?? "custom",
+      latitude: Number(target.latitude.toFixed(4)),
+      longitude: Number(target.longitude.toFixed(4)),
+      area_ha: Number(target.areaHa),
+      irrigation_type: irrigType,
+      irrigation_budget_mm: irrigType === "irrigated" ? Number(target.irrigationBudgetMm) : null,
+      soil_ph: Number(target.soilPh.toFixed(1)),
+      soil_texture: texType,
+      prior_crop_id: target.priorCropId || "wheat",
+      lab_metrics: labPayload,
+      boundary_polygon: boundaryPolygon,
+    };
+  }, []);
+
   const saveActiveParcelInputs = useCallback(
     async (overrideDraft?: FieldDraft) => {
       if (!authToken) return { ok: false, error: "Not authenticated" };
@@ -754,40 +809,11 @@ export function SpaceFarmProvider({ children }: { children: ReactNode }) {
       const primary = parcels.find((p) => p.is_primary) ?? parcels[0];
       if (!primary) return { ok: false, error: "No active parcel found" };
       try {
-        const labPayload: WorkspaceLabMetrics = {
-          organic_matter_pct: Number(target.labMetrics.organicMatterPct),
-          nitrogen_mg_kg: Number(target.labMetrics.nitrogenMgKg),
-          phosphorus_mg_kg: Number(target.labMetrics.phosphorusMgKg),
-          potassium_mg_kg: Number(target.labMetrics.potassiumMgKg),
-          ec_ds_m: Number(target.labMetrics.ecDsM),
-          moisture_capacity_pct: Number(target.labMetrics.moistureCapacityPct),
-          depth_top_cm: Number(target.soilDepthTopCm || 0),
-          depth_bottom_cm: Number(target.soilDepthBottomCm || 30),
-          sample_date: target.soilSampleDate || "2025-03-14",
-          lab_report_id: target.soilSourceRef || "LAB-AZ-2025",
-          soil_source_type: target.soilSourceType === "laboratory" ? "laboratory" : "user_reported",
-        };
-        const irrigType: "rainfed" | "irrigated" =
-          target.irrigationType === "rainfed" ? "rainfed" : "irrigated";
-        const texType: "sand" | "loam" | "clay" | "other" =
-          target.soilTexture === "sand" ||
-          target.soilTexture === "clay" ||
-          target.soilTexture === "other"
-            ? target.soilTexture
-            : "loam";
-        const res = await updateFarmParcel(authToken, primary.id, {
-          label: target.label,
-          region_id: target.regionPresetId ?? primary.region_id,
-          latitude: Number(target.latitude.toFixed(4)),
-          longitude: Number(target.longitude.toFixed(4)),
-          area_ha: Number(target.areaHa),
-          irrigation_type: irrigType,
-          irrigation_budget_mm: irrigType === "irrigated" ? Number(target.irrigationBudgetMm) : null,
-          soil_ph: Number(target.soilPh.toFixed(1)),
-          soil_texture: texType,
-          prior_crop_id: target.priorCropId || "wheat",
-          lab_metrics: labPayload,
-        });
+        const res = await updateFarmParcel(
+          authToken,
+          primary.id,
+          buildParcelPayloadFromDraft(target),
+        );
         setParcels(res.parcels);
         return { ok: true };
       } catch (err) {
@@ -798,7 +824,19 @@ export function SpaceFarmProvider({ children }: { children: ReactNode }) {
         );
       }
     },
-    [authToken, draft, locale, parcels],
+    [authToken, buildParcelPayloadFromDraft, draft, locale, parcels],
+  );
+
+  const saveDraftAsNewParcel = useCallback(
+    async (overrideDraft?: FieldDraft) => {
+      const target = overrideDraft ?? draft;
+      const payload = buildParcelPayloadFromDraft(target);
+      return addParcel({
+        ...payload,
+        is_primary: true,
+      });
+    },
+    [addParcel, buildParcelPayloadFromDraft, draft],
   );
 
   // Load API health & crop catalog on boot without inventing synthetic fallback
@@ -885,8 +923,9 @@ export function SpaceFarmProvider({ children }: { children: ReactNode }) {
         ...prev,
         regionPresetId: null,
         farmId: `custom-${lat.toFixed(2)}-${lon.toFixed(2)}`,
-        label: label ?? `Custom Field (${lat.toFixed(2)}°N, ${lon.toFixed(2)}°E)`,
+        label: label ?? `Custom Field (${formatLatLon(lat, lon, 2)})`,
         hasBoundary: false,
+        boundaryPolygon: null,
         latitude: Number(lat.toFixed(4)),
         longitude: Number(lon.toFixed(4)),
       }));
@@ -1063,6 +1102,13 @@ export function SpaceFarmProvider({ children }: { children: ReactNode }) {
       const cleanLon = Number(selection.lon.toFixed(4));
       const cleanAreaHa = Number(Math.max(0.5, selection.areaHa).toFixed(1));
 
+      const nextPoly =
+        selection.polygon && selection.polygon.length >= 3
+          ? selection.polygon.map(
+              ([lat, lon]) => [Number(lat.toFixed(5)), Number(lon.toFixed(5))] as [number, number],
+            )
+          : null;
+
       const nextDraft: FieldDraft = matchedPreset
         ? {
             ...createDraftFromRegion(matchedPreset),
@@ -1070,11 +1116,19 @@ export function SpaceFarmProvider({ children }: { children: ReactNode }) {
             longitude: cleanLon,
             label: selection.label || matchedPreset.nameEn,
             areaHa: cleanAreaHa,
+            hasBoundary: Boolean(nextPoly || matchedPreset.hasBoundary),
+            boundaryPolygon:
+              nextPoly ??
+              (matchedPreset.illustrativePolygon
+                ? matchedPreset.illustrativePolygon.map(([lat, lon]) => [lat, lon] as [number, number])
+                : null),
           }
         : matchedDistrict
           ? {
               ...createDraftFromAzDistrict(matchedDistrict, locale),
               areaHa: cleanAreaHa,
+              hasBoundary: Boolean(nextPoly),
+              boundaryPolygon: nextPoly,
             }
           : {
               ...draft,
@@ -1082,8 +1136,9 @@ export function SpaceFarmProvider({ children }: { children: ReactNode }) {
               farmId: `orbital-${cleanLat.toFixed(2)}-${cleanLon.toFixed(2)}`,
               label:
                 selection.label ||
-                `Orbital Sector (${cleanLat.toFixed(2)}°N, ${cleanLon.toFixed(2)}°E)`,
-              hasBoundary: false,
+                `Orbital Sector (${formatLatLon(cleanLat, cleanLon, 2)})`,
+              hasBoundary: Boolean(nextPoly),
+              boundaryPolygon: nextPoly,
               latitude: cleanLat,
               longitude: cleanLon,
               areaHa: cleanAreaHa,
@@ -1203,8 +1258,8 @@ export function SpaceFarmProvider({ children }: { children: ReactNode }) {
           ? `NASA POWER 2024 Snapshot hazırdır`
           : `NASA POWER 2024 Snapshot Ready`,
         detail: isAz
-          ? `${draft.label} (${draft.latitude.toFixed(2)}°N, ${draft.longitude.toFixed(2)}°E) üzrə 366/366 gün iqlim seriyası aktivdir.`
-          : `366/366 daily climate telemetry active for ${draft.label} (${draft.latitude.toFixed(2)}°N, ${draft.longitude.toFixed(2)}°E).`,
+          ? `${draft.label} (${formatLatLon(draft.latitude, draft.longitude, 2)}) üzrə 366/366 gün iqlim seriyası aktivdir.`
+          : `366/366 daily climate telemetry active for ${draft.label} (${formatLatLon(draft.latitude, draft.longitude, 2)}).`,
         route: "/climate",
         tone: "cyan",
       },
@@ -1312,6 +1367,35 @@ export function SpaceFarmProvider({ children }: { children: ReactNode }) {
     });
   }, [notifications]);
 
+  const loginAsDemoJudge = useCallback(
+    async (region = "Ganja-Dashkasan"): Promise<AuthActionResult> => {
+      if (demoLoginPromiseRef.current) {
+        return demoLoginPromiseRef.current;
+      }
+      const pending = (async (): Promise<AuthActionResult> => {
+        try {
+          const res = await demoLoginAccount(region);
+          applyAuthSession(res.token, res.user, res.parcels);
+          setAuthModalOpen(false);
+          setAuthAlertMessage(null);
+          showToast(TRANSLATIONS[localeRef.current].auth.demoWelcome);
+          return { ok: true };
+        } catch (err) {
+          return extractMutationError(
+            err,
+            TRANSLATIONS[localeRef.current].errors.apiUnreachableTitle,
+            TRANSLATIONS[localeRef.current].auth.invalidCredentials,
+          );
+        } finally {
+          demoLoginPromiseRef.current = null;
+        }
+      })();
+      demoLoginPromiseRef.current = pending;
+      return pending;
+    },
+    [applyAuthSession, showToast],
+  );
+
   const value: SpaceFarmContextValue = {
     locale,
     setLocale,
@@ -1373,6 +1457,7 @@ export function SpaceFarmProvider({ children }: { children: ReactNode }) {
     updateProfile,
     addParcel,
     saveActiveParcelInputs,
+    saveDraftAsNewParcel,
     setActiveParcel,
     removeParcel,
     authModalOpen,
@@ -1384,6 +1469,7 @@ export function SpaceFarmProvider({ children }: { children: ReactNode }) {
     loginUser,
     registerUser,
     establishAuthSession,
+    loginAsDemoJudge,
     logoutUser,
     triggerAuthAlert,
     theme,

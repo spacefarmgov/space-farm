@@ -144,6 +144,7 @@ export function createDraftFromAzDistrict(
         ? `${district.nameAz} Sahə (${district.economicRegionAz})`
         : `${district.nameEn} Field (${district.economicRegionEn})`,
     hasBoundary: false,
+    boundaryPolygon: null,
     latitude: district.lat,
     longitude: district.lon,
     areaHa: 25,

@@ -11,8 +11,8 @@ import {
   StaleBanner,
 } from "../components/ui/StatusPrimitives";
 import { useSpaceFarm } from "../context/SpaceFarmContext";
-import { normalizeWeightsForRequest } from "../data/regions";
-import { formatLocaleNumber } from "../locales/translations";
+import { normalizeWeightsForRequest, toNormalizedPercentages } from "../data/regions";
+import { formatCropName, formatLocaleNumber } from "../locales/translations";
 
 export function RotationStudioPage() {
   const {
@@ -35,6 +35,7 @@ export function RotationStudioPage() {
   const explanationRef = useRef<HTMLDivElement | null>(null);
 
   const normalizedReq = normalizeWeightsForRequest(requestedWeights) ?? { water: 0.5, soil: 0.3, income: 0.2 };
+  const reqPcts = toNormalizedPercentages(normalizedReq);
   const plans = baselineSim?.plans ?? [];
 
   function handleSliderChange(key: "water" | "soil" | "income", rawPct: number) {
@@ -97,7 +98,7 @@ export function RotationStudioPage() {
             <label className="sf-field">
               <div className="sf-label-row">
                 <span>{t.rotation.weightWater}</span>
-                <span className="mono">{Math.round(normalizedReq.water * 100)}%</span>
+                <span className="mono">{reqPcts.water}%</span>
               </div>
               <input
                 type="range"
@@ -114,7 +115,7 @@ export function RotationStudioPage() {
             <label className="sf-field">
               <div className="sf-label-row">
                 <span>{t.rotation.weightSoil}</span>
-                <span className="mono">{Math.round(normalizedReq.soil * 100)}%</span>
+                <span className="mono">{reqPcts.soil}%</span>
               </div>
               <input
                 type="range"
@@ -158,11 +159,15 @@ export function RotationStudioPage() {
                 }}
               >
                 <div style={{ fontWeight: 600, marginBottom: 4 }}>{t.rotation.effectiveWeightsTitle}</div>
-                <div className="mono" style={{ color: "var(--text-secondary)" }}>
-                  {t.rotation.waterFit} {Math.round(baselineSim.weights_effective.water * 100)}% · {t.rotation.soilFit}{" "}
-                  {Math.round(baselineSim.weights_effective.soil * 100)}% · {t.rotation.incomeFit}{" "}
-                  {Math.round(baselineSim.weights_effective.income * 100)}%
-                </div>
+                {(() => {
+                  const effPcts = toNormalizedPercentages(baselineSim.weights_effective);
+                  return (
+                    <div className="mono" style={{ color: "var(--text-secondary)" }}>
+                      {t.rotation.waterFit} {effPcts.water}% · {t.rotation.soilFit}{" "}
+                      {effPcts.soil}% · {t.rotation.incomeFit} {effPcts.income}%
+                    </div>
+                  );
+                })()}
               </div>
             )}
 
@@ -352,7 +357,9 @@ export function RotationStudioPage() {
                                 <CropIcon cropId={yr.crop_id} size={18} />
                                 <div style={{ minWidth: 0, flex: 1 }}>
                                   <div style={{ display: "flex", justifyContent: "space-between", gap: 6 }}>
-                                    <span style={{ fontWeight: 600, fontSize: 14 }}>{yr.crop_name}</span>
+                                    <span style={{ fontWeight: 600, fontSize: 14 }}>
+                                      {formatCropName(yr.crop_id, yr.crop_name, locale)}
+                                    </span>
                                     <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
                                       {t.rotation.yearLabel} {yr.year_index}
                                     </span>
@@ -465,7 +472,8 @@ export function RotationStudioPage() {
                       <div>
                         <h2 className="sf-section-title">
                           <Sparkles size={18} style={{ color: "var(--accent-soft)", marginRight: 8, verticalAlign: "text-bottom" }} aria-hidden="true" />
-                          {t.rotation.whyTitle} ({selectedPlan.years.map((y) => y.crop_name).join(" → ")})
+                          {t.rotation.whyTitle} (
+                          {selectedPlan.years.map((y) => formatCropName(y.crop_id, y.crop_name, locale)).join(" → ")})
                         </h2>
                         <p style={{ margin: "4px 0 0", fontSize: 12.5, color: "var(--text-muted)" }}>
                           {t.rotation.scoreDisclaimer}
@@ -604,7 +612,9 @@ export function RotationStudioPage() {
                             <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{t.rotation.benchmarkSubtitle}</div>
                           </div>
                           <span className={`sf-badge ${baselineSim.baseline_practice_plan.feasible === false ? "sf-badge-warning" : "sf-badge-neutral"}`}>
-                            {baselineSim.baseline_practice_plan.years.map((y) => y.crop_name).join(" → ")}
+                            {baselineSim.baseline_practice_plan.years
+                              .map((y) => formatCropName(y.crop_id, y.crop_name, locale))
+                              .join(" → ")}
                           </span>
                         </div>
                         <div

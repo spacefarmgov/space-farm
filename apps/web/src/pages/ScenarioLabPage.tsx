@@ -4,7 +4,7 @@ import { AppShell } from "../components/layout/AppShell";
 import { DataModeBadge, ErrorPanel, LoadingSkeleton } from "../components/ui/StatusPrimitives";
 import { useSpaceFarm } from "../context/SpaceFarmContext";
 import { hasClimateContextMismatch } from "../data/regions";
-import { formatLocaleNumber } from "../locales/translations";
+import { formatCropName, formatLocaleNumber } from "../locales/translations";
 
 const STRESS_STEPS: Array<{ value: 0.9 | 0.8 | 0.7; label: string }> = [
   { value: 0.9, label: "−10% (0.9×)" },
@@ -163,7 +163,11 @@ export function ScenarioLabPage() {
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5 }}>
                       <span style={{ color: "var(--text-secondary)" }}>{t.scenarios.topPlanLabel}</span>
                       <strong>
-                        {baselineMatchedPlan ? baselineMatchedPlan.years.map((y) => y.crop_name).join(" → ") : "—"}
+                        {baselineMatchedPlan
+                          ? baselineMatchedPlan.years
+                              .map((y) => formatCropName(y.crop_id, y.crop_name, locale))
+                              .join(" → ")
+                          : "—"}
                       </strong>
                     </div>
 
@@ -230,7 +234,9 @@ export function ScenarioLabPage() {
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5 }}>
                       <span style={{ color: "var(--text-secondary)" }}>{t.scenarios.topPlanLabel}</span>
                       <strong>
-                        {topStressPlan ? topStressPlan.years.map((y) => y.crop_name).join(" → ") : t.badges.noFeasiblePlan}
+                        {topStressPlan
+                          ? topStressPlan.years.map((y) => formatCropName(y.crop_id, y.crop_name, locale)).join(" → ")
+                          : t.badges.noFeasiblePlan}
                       </strong>
                     </div>
 
@@ -244,7 +250,9 @@ export function ScenarioLabPage() {
                           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "var(--text-muted)" }}>
                             <span>{t.scenarios.pinnedReferenceLabel}</span>
                             <span style={{ color: "var(--text-secondary)" }}>
-                              {matchedStressPlan.years.map((y) => y.crop_name).join(" → ")}
+                              {matchedStressPlan.years
+                                .map((y) => formatCropName(y.crop_id, y.crop_name, locale))
+                                .join(" → ")}
                             </span>
                           </div>
                         )}
@@ -398,7 +406,9 @@ export function ScenarioLabPage() {
                     {t.scenarios.accChanged}
                   </strong>
                   <span>
-                    Scenario rainfall multiplier adjusted to <code className="mono">{rainfallMultiplier}×</code> ({Math.round((rainfallMultiplier - 1) * 100)}%).
+                    {t.scenarios.accChangedDesc
+                      .replace("{multiplier}", String(rainfallMultiplier))
+                      .replace("{pct}", String(Math.round((rainfallMultiplier - 1) * 100)))}
                   </span>
                 </div>
 
@@ -407,7 +417,9 @@ export function ScenarioLabPage() {
                     {t.scenarios.accUnchanged}
                   </strong>
                   <span>
-                    Field coordinates ({draft.latitude.toFixed(2)}, {draft.longitude.toFixed(2)}), soil inputs, irrigation mode, and priority weights remained locked.
+                    {t.scenarios.accUnchangedDesc
+                      .replace("{lat}", draft.latitude.toFixed(2))
+                      .replace("{lon}", draft.longitude.toFixed(2))}
                   </span>
                 </div>
 
@@ -415,18 +427,14 @@ export function ScenarioLabPage() {
                   <strong style={{ color: "var(--text-primary)", display: "block", marginBottom: 4 }}>
                     {t.scenarios.accRules}
                   </strong>
-                  <span>
-                    Seasonal water-band suitability (<code className="mono">RULE_WATER_BAND</code>) evaluated directly against scaled effective water supply.
-                  </span>
+                  <span>{t.scenarios.accRulesDesc}</span>
                 </div>
 
                 <div>
                   <strong style={{ color: "var(--text-primary)", display: "block", marginBottom: 4 }}>
                     {t.scenarios.accLimits}
                   </strong>
-                  <span>
-                    Deterministic annual precipitation scaling only — not seasonal drought distribution timing or sub-daily evapotranspiration.
-                  </span>
+                  <span>{t.scenarios.accLimitsDesc}</span>
                 </div>
               </div>
             </div>

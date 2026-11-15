@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { AppShell } from "../components/layout/AppShell";
 import { useSpaceFarm } from "../context/SpaceFarmContext";
+import { formatLatLon } from "../utils/locationSearch";
 import {
   SpaceFarmApiError,
   fetchAlertsOverview,
@@ -294,7 +295,7 @@ export function RiskAlertsPage() {
             <h3>{ap.hazards.drought}</h3>
             <strong className="mono">
               {minBalance.length > 0
-                ? `${Math.min(...minBalance) > 0 ? "+" : ""}${formatLocaleNumber(Math.min(...minBalance), locale, 1)} mm`
+                ? `${ap.balancePrefix} ${Math.min(...minBalance) > 0 ? "+" : ""}${formatLocaleNumber(Math.min(...minBalance), locale, 1)} mm`
                 : "—"}
             </strong>
           </div>
@@ -364,7 +365,7 @@ export function RiskAlertsPage() {
                         </div>
                         <small className="mono">
                           <MapPin size={12} aria-hidden="true" style={{ verticalAlign: "-1px", marginRight: 4 }} />
-                          {snap.latitude.toFixed(4)}°N, {snap.longitude.toFixed(4)}°E
+                          {formatLatLon(snap.latitude, snap.longitude, 4)}
                           {snap.area_ha ? ` · ${snap.area_ha} ha` : ""}
                         </small>
                       </div>

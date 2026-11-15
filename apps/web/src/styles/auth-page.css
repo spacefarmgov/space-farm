@@ -480,6 +480,56 @@
   margin: 0;
 }
 
+.sf-auth-demo-box {
+  margin: 0 0 18px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(56, 189, 248, 0.34);
+  background: linear-gradient(135deg, rgba(121, 70, 237, 0.14), rgba(14, 165, 233, 0.1));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sf-auth-demo-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 16px;
+  border: 1px solid rgba(167, 139, 250, 0.55);
+  border-radius: 10px;
+  background: linear-gradient(135deg, #6d3beb, #0284c7);
+  color: #ffffff;
+  font-size: 14.5px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(109, 59, 235, 0.28);
+  transition: transform 0.15s ease, box-shadow 0.18s ease, filter 0.18s ease;
+}
+
+.sf-auth-demo-btn:hover:not(:disabled) {
+  filter: brightness(1.08);
+  box-shadow: 0 8px 22px rgba(56, 189, 248, 0.28);
+  transform: translateY(-1px);
+}
+
+.sf-auth-demo-btn:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.sf-auth-demo-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #d6d3eb;
+  text-align: center;
+}
+
 .sf-auth-google-btn {
   display: flex;
   align-items: center;

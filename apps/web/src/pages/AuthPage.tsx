@@ -54,6 +54,7 @@ export function AuthPage({ initialMode }: { initialMode: AuthRouteMode }) {
     loginUser,
     registerUser,
     establishAuthSession,
+    loginAsDemoJudge,
   } = useSpaceFarm();
   const navigate = useNavigate();
   const location = useLocation();
@@ -317,6 +318,26 @@ export function AuthPage({ initialMode }: { initialMode: AuthRouteMode }) {
         ),
         tone: "error",
       });
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handleDemoJudgeLogin() {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    setStatusNotice(null);
+    setFieldErrors({});
+    try {
+      const result = await loginAsDemoJudge(region);
+      if (result.ok) {
+        navigate(redirectTarget, { replace: true });
+      } else {
+        setStatusNotice({
+          message: result.error ?? t.auth.invalidCredentials,
+          tone: "error",
+        });
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -614,6 +635,22 @@ export function AuthPage({ initialMode }: { initialMode: AuthRouteMode }) {
                       {blockedAlert}
                     </div>
                   </div>
+                </div>
+              )}
+
+              {/* One-click Demo / Judge workspace entry (zero registration/OTP friction) */}
+              {mode !== "forgot-password" && (
+                <div className="sf-auth-demo-box">
+                  <button
+                    type="button"
+                    className="sf-auth-demo-btn"
+                    onClick={() => void handleDemoJudgeLogin()}
+                    disabled={isSubmitting}
+                  >
+                    <KeyRound size={16} aria-hidden="true" />
+                    <span>{t.auth.demoJudgeBtn}</span>
+                  </button>
+                  <p className="sf-auth-demo-hint">{t.auth.demoJudgeHint}</p>
                 </div>
               )}
 

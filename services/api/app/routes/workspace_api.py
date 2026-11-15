@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import logging
+import math
+import secrets
 from datetime import date
 from typing import Any, Literal
 
 import httpx
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
+from fastapi import APIRouter, Body, Depends, Header, HTTPException, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.config import get_settings
@@ -127,6 +129,10 @@ class RegisterPayload(_StrictBody):
         if "@" not in clean or "." not in clean.split("@")[-1]:
             raise ValueError("Please provide a valid email address.")
         return clean
+
+
+class DemoLoginPayload(_StrictBody):
+    region: str = Field(default="Ganja-Dashkasan", min_length=1, max_length=120)
 
 
 class LoginPayload(_StrictBody):
@@ -249,6 +255,22 @@ class LabMetricsPayload(_StrictBody):
     soil_source_type: Literal["laboratory", "extension_service", "field_probe", "user_reported"] | None = None
 
 
+def _validate_boundary_polygon(v: list[list[float]] | None) -> list[list[float]] | None:
+    if v is None or len(v) == 0:
+        return None
+    if len(v) < 3 or len(v) > 64:
+        raise ValueError("boundary_polygon must contain between 3 and 64 coordinate vertices")
+    cleaned: list[list[float]] = []
+    for pt in v:
+        if not isinstance(pt, (list, tuple)) or len(pt) != 2:
+            raise ValueError("Each boundary_polygon vertex must be [lat, lon]")
+        lat, lon = float(pt[0]), float(pt[1])
+        if not (math.isfinite(lat) and math.isfinite(lon) and -90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
+            raise ValueError("boundary_polygon vertex coordinates are out of WGS-84 range")
+        cleaned.append([round(lat, 5), round(lon, 5)])
+    return cleaned
+
+
 class ParcelCreatePayload(_StrictBody):
     label: str = Field(min_length=2, max_length=160)
     region_id: str = Field(default="custom", max_length=80)
@@ -261,7 +283,13 @@ class ParcelCreatePayload(_StrictBody):
     soil_texture: Literal["unknown", "sand", "loam", "clay", "other"] = "loam"
     prior_crop_id: str = Field(default="wheat", min_length=1, max_length=60)
     lab_metrics: LabMetricsPayload | None = None
+    boundary_polygon: list[list[float]] | None = None
     is_primary: bool = True
+
+    @field_validator("boundary_polygon")
+    @classmethod
+    def check_boundary_polygon(cls, v: list[list[float]] | None) -> list[list[float]] | None:
+        return _validate_boundary_polygon(v)
 
 
 class ParcelUpdatePayload(_StrictBody):
@@ -276,6 +304,12 @@ class ParcelUpdatePayload(_StrictBody):
     soil_texture: Literal["sand", "loam", "clay", "other"] | None = None
     prior_crop_id: str | None = Field(default=None, min_length=1, max_length=60)
     lab_metrics: LabMetricsPayload | None = None
+    boundary_polygon: list[list[float]] | None = None
+
+    @field_validator("boundary_polygon")
+    @classmethod
+    def check_boundary_polygon(cls, v: list[list[float]] | None) -> list[list[float]] | None:
+        return _validate_boundary_polygon(v)
 
 
 class AiAssistPayload(_StrictBody):
@@ -468,6 +502,27 @@ def register_account(
         email=payload.email,
         password=payload.password,
         region=payload.region,
+    )
+    _set_vault_cookie(request, response, store, str(user["id"]))
+    return {"token": token, "user": user, "parcels": parcels}
+
+
+@router.post("/auth/demo", status_code=status.HTTP_201_CREATED)
+def demo_judge_access(
+    request: Request,
+    response: Response,
+    payload: DemoLoginPayload | None = Body(default=None),
+    store: SpaceFarmStore = Depends(_get_store),
+) -> dict[str, Any]:
+    """Provision an isolated one-click Judge / Demo workspace session without SMTP friction."""
+    region = payload.region.strip() if payload and payload.region.strip() else "Ganja-Dashkasan"
+    demo_email = f"judge-{secrets.token_hex(4)}@demo.spacefarm.org"
+    demo_password = secrets.token_urlsafe(24)
+    token, user, parcels = store.register_user(
+        name="NASA Judge Demo",
+        email=demo_email,
+        password=demo_password,
+        region=region,
     )
     _set_vault_cookie(request, response, store, str(user["id"]))
     return {"token": token, "user": user, "parcels": parcels}

@@ -961,4 +961,325 @@ class WorkspaceApiTests(unittest.TestCase):
                         )
                         self.assertEqual(new_login.status_code, 200, new_login.text)
 
+    def test_demo_judge_access_creates_isolated_rehydratable_session(self) -> None:
+        with patch.dict(
+            os.environ,
+            {"SPACEFARM_AUTH_SECRET": "shared-vercel-test-secret-abcdef123456"},
+            clear=False,
+        ):
+            resp_a = self.client.post("/api/v1/auth/demo", json={})
+            self.assertEqual(resp_a.status_code, 201, resp_a.text)
+            body_a = resp_a.json()
+            self.assertTrue(body_a.get("token"))
+            self.assertEqual(body_a["user"]["name"], "NASA Judge Demo")
+            self.assertTrue(body_a["user"]["email"].endswith("@demo.spacefarm.org"))
+            self.assertGreaterEqual(len(body_a.get("parcels") or []), 1)
+            self.assertTrue((resp_a.cookies.get(VAULT_COOKIE_NAME) or "").startswith("sfv1."))
+
+            # Second invocation with no JSON body creates a separate isolated demo account
+            resp_b = self.client.post("/api/v1/auth/demo")
+            self.assertEqual(resp_b.status_code, 201, resp_b.text)
+            body_b = resp_b.json()
+            self.assertNotEqual(body_a["user"]["id"], body_b["user"]["id"])
+            self.assertNotEqual(body_a["user"]["email"], body_b["user"]["email"])
+
+            # Token survives across a cold serverless container via v2 claims rehydration
+            with tempfile.TemporaryDirectory() as cold_dir:
+                cold_store = SpaceFarmStore(Settings(data_dir=cold_dir))
+                cold_app = create_app()
+                cold_app.dependency_overrides[_get_store] = lambda: cold_store
+                with TestClient(cold_app) as cold_client:
+                    prof_resp = cold_client.get(
+                        "/api/v1/profile",
+                        headers={"Authorization": f"Bearer {body_a['token']}"},
+                    )
+                    self.assertEqual(prof_resp.status_code, 200, prof_resp.text)
+                    self.assertEqual(prof_resp.json()["user"]["email"], body_a["user"]["email"])
+
+    def test_orbital_geocode_az_districts_global_mock_short_link_and_ssrf_guard(self) -> None:
+        from unittest.mock import AsyncMock, patch
+        import httpx
+        from app.routes import orbital as orbital_routes
+
+        orbital_routes._GEOCODE_CACHE.clear()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store = SpaceFarmStore(Settings(data_dir=tmp))
+            app = create_app()
+            app.dependency_overrides[_get_store] = lambda: store
+            with TestClient(app) as client:
+                # 1. Local Azerbaijan district search (works even when external geocoder fails)
+                with patch(
+                    "app.routes.orbital._fetch_open_meteo_geocode",
+                    new=AsyncMock(return_value=([], False)),
+                ):
+                    az_resp = client.get("/api/orbital/geocode", params={"q": "Şəki"})
+                    self.assertEqual(az_resp.status_code, 200, az_resp.text)
+                    az_body = az_resp.json()
+                    self.assertEqual(az_body["source_status"], "local_only")
+                    self.assertTrue(any(r["preset_id"] == "shaki" for r in az_body["results"]))
+
+                # 2. Global Open-Meteo geocode mapping + caching
+                mock_global = [
+                    {
+                        "id": "om:1850147",
+                        "name": "Tokyo",
+                        "name_az": None,
+                        "admin1": "Tokyo",
+                        "admin1_az": None,
+                        "country": "Japan",
+                        "country_code": "JP",
+                        "lat": 35.6895,
+                        "lon": 139.6917,
+                        "elevation_m": 44.0,
+                        "population": 9733276,
+                        "preset_id": None,
+                        "source": "open_meteo",
+                    }
+                ]
+                with patch(
+                    "app.routes.orbital._fetch_open_meteo_geocode",
+                    new=AsyncMock(return_value=(mock_global, True)),
+                ):
+                    gl_resp = client.get("/api/orbital/geocode", params={"q": "Tokyo"})
+                    self.assertEqual(gl_resp.status_code, 200, gl_resp.text)
+                    gl_body = gl_resp.json()
+                    self.assertEqual(gl_body["kind"], "results")
+                    self.assertEqual(gl_body["results"][0]["name"], "Tokyo")
+                    self.assertAlmostEqual(gl_body["results"][0]["lat"], 35.6895, places=4)
+
+                # 3. Allowlisted short Google Maps link expansion (prefers !3d!4d pin over @ viewport)
+                redirect_resp = httpx.Response(
+                    302,
+                    headers={
+                        "location": "https://www.google.com/maps/place/Fresno+CA/@36.70,-119.80,11z/data=!3m1!4b1!4m6!3m5!1s0x0:0x0!8m2!3d36.7378!4d-119.7871"
+                    },
+                )
+
+                class _MockAsyncClient:
+                    def __init__(self, *args, **kwargs):
+                        pass
+
+                    async def __aenter__(self):
+                        return self
+
+                    async def __aexit__(self, exc_type, exc, tb):
+                        return False
+
+                    async def get(self, url: str):
+                        return redirect_resp
+
+                with patch("app.routes.orbital.httpx.AsyncClient", _MockAsyncClient):
+                    short_resp = client.get(
+                        "/api/orbital/geocode",
+                        params={"q": "https://maps.app.goo.gl/TestFarmPin"},
+                    )
+                    self.assertEqual(short_resp.status_code, 200, short_resp.text)
+                    short_body = short_resp.json()
+                    self.assertEqual(short_body["kind"], "resolved_link")
+                    self.assertEqual(short_body["results"][0]["source"], "google_maps_link")
+                    self.assertAlmostEqual(short_body["results"][0]["lat"], 36.7378, places=4)
+                    self.assertAlmostEqual(short_body["results"][0]["lon"], -119.7871, places=4)
+
+                # 4. SSRF block on arbitrary non-allowlisted http/https URLs
+                ssrf_resp = client.get(
+                    "/api/orbital/geocode",
+                    params={"q": "http://127.0.0.1:8000/internal-admin"},
+                )
+                self.assertEqual(ssrf_resp.status_code, 400, ssrf_resp.text)
+
+                evil_resp = client.get(
+                    "/api/orbital/geocode",
+                    params={"q": "https://evil.example.com/redirect"},
+                )
+                self.assertEqual(evil_resp.status_code, 400, evil_resp.text)
+
+    def test_orbital_geocode_ranking_no_midword_false_positives(self) -> None:
+        from unittest.mock import AsyncMock, patch
+        from app.routes import orbital as orbital_routes
+
+        orbital_routes._GEOCODE_CACHE.clear()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store = SpaceFarmStore(Settings(data_dir=tmp))
+            app = create_app()
+            app.dependency_overrides[_get_store] = lambda: store
+            with TestClient(app) as client:
+                # 1. "Ankara" must NEVER match "Lankaran-Astara" mid-word substring; TR Ankara must be #1
+                mock_ankara = [
+                    {
+                        "id": "om:323786",
+                        "name": "Ankara",
+                        "name_az": None,
+                        "admin1": "Ankara",
+                        "admin1_az": None,
+                        "country": "Republic of Türkiye",
+                        "country_code": "TR",
+                        "lat": 39.91987,
+                        "lon": 32.85427,
+                        "elevation_m": 850.0,
+                        "population": 3517182,
+                        "preset_id": None,
+                        "source": "open_meteo",
+                    },
+                    {
+                        "id": "om:3204772",
+                        "name": "Ankaran",
+                        "name_az": None,
+                        "admin1": "Ankaran",
+                        "admin1_az": None,
+                        "country": "Slovenia",
+                        "country_code": "SI",
+                        "lat": 45.57861,
+                        "lon": 13.73611,
+                        "elevation_m": 16.0,
+                        "population": 3278,
+                        "preset_id": None,
+                        "source": "open_meteo",
+                    },
+                ]
+                with patch(
+                    "app.routes.orbital._fetch_open_meteo_geocode",
+                    new=AsyncMock(return_value=(mock_ankara, True)),
+                ):
+                    ank_resp = client.get("/api/orbital/geocode", params={"q": "Ankara"})
+                    self.assertEqual(ank_resp.status_code, 200, ank_resp.text)
+                    ank_body = ank_resp.json()
+                    self.assertEqual(ank_body["results"][0]["name"], "Ankara")
+                    self.assertEqual(ank_body["results"][0]["country_code"], "TR")
+                    self.assertFalse(
+                        any(r["source"] == "az_district" for r in ank_body["results"]),
+                        f"Unexpected AZ district false positive for Ankara: {ank_body['results']}",
+                    )
+
+                # 2. City query "Ganja" must rank global city above Ganja-Dashkasan economic-region districts
+                mock_ganja = [
+                    {
+                        "id": "om:586523",
+                        "name": "Ganja",
+                        "name_az": None,
+                        "admin1": "Ganja",
+                        "admin1_az": None,
+                        "country": "Azerbaijan",
+                        "country_code": "AZ",
+                        "lat": 40.6828,
+                        "lon": 46.3606,
+                        "elevation_m": 408.0,
+                        "population": 335600,
+                        "preset_id": None,
+                        "source": "open_meteo",
+                    }
+                ]
+                with patch(
+                    "app.routes.orbital._fetch_open_meteo_geocode",
+                    new=AsyncMock(return_value=(mock_ganja, True)),
+                ):
+                    g_resp = client.get("/api/orbital/geocode", params={"q": "Ganja"})
+                    self.assertEqual(g_resp.status_code, 200, g_resp.text)
+                    g_body = g_resp.json()
+                    self.assertEqual(g_body["results"][0]["name"], "Ganja")
+                    self.assertEqual(g_body["results"][0]["source"], "open_meteo")
+
+                # 3. Exact AZ district query ("Astara") still keeps az:astara at #1
+                mock_astara_om = [
+                    {
+                        "id": "om:148303",
+                        "name": "Astara",
+                        "name_az": None,
+                        "admin1": "Astara",
+                        "admin1_az": None,
+                        "country": "Azerbaijan",
+                        "country_code": "AZ",
+                        "lat": 38.456,
+                        "lon": 48.875,
+                        "elevation_m": -22.0,
+                        "population": 15190,
+                        "preset_id": None,
+                        "source": "open_meteo",
+                    }
+                ]
+                with patch(
+                    "app.routes.orbital._fetch_open_meteo_geocode",
+                    new=AsyncMock(return_value=(mock_astara_om, True)),
+                ):
+                    a_resp = client.get("/api/orbital/geocode", params={"q": "Astara"})
+                    self.assertEqual(a_resp.status_code, 200, a_resp.text)
+                    a_body = a_resp.json()
+                    self.assertEqual(a_body["results"][0]["preset_id"], "astara")
+                    self.assertEqual(a_body["results"][0]["source"], "az_district")
+
+    def test_parcel_boundary_polygon_persistence_and_validation(self) -> None:
+        token, _, initial_parcels = self._register_sample()
+        headers = {"Authorization": f"Bearer {token}"}
+        polygon = [
+            [39.922, 32.851],
+            [39.924, 32.858],
+            [39.918, 32.86],
+            [39.917, 32.852],
+        ]
+
+        created = self.client.post(
+            "/api/v1/parcels",
+            headers=headers,
+            json={
+                "label": "Ankara Pilot Plot",
+                "region_id": "custom",
+                "latitude": 39.92,
+                "longitude": 32.855,
+                "area_ha": 42.6,
+                "irrigation_type": "irrigated",
+                "irrigation_budget_mm": 310.0,
+                "soil_ph": 7.1,
+                "soil_texture": "loam",
+                "prior_crop_id": "wheat",
+                "boundary_polygon": polygon,
+                "is_primary": True,
+            },
+        )
+        self.assertEqual(created.status_code, 201, created.text)
+        parcels = created.json()["parcels"]
+        self.assertEqual(parcels[0]["label"], "Ankara Pilot Plot")
+        self.assertEqual(parcels[0]["region_id"], "custom")
+        self.assertEqual(len(parcels[0]["boundary_polygon"]), 4)
+        self.assertAlmostEqual(parcels[0]["boundary_polygon"][0][0], 39.922, places=4)
+
+        new_id = parcels[0]["id"]
+        updated_poly = [
+            [39.923, 32.851],
+            [39.925, 32.859],
+            [39.918, 32.861],
+            [39.916, 32.854],
+            [39.919, 32.850],
+        ]
+        upd = self.client.put(
+            f"/api/v1/parcels/{new_id}",
+            headers=headers,
+            json={"boundary_polygon": updated_poly, "area_ha": 55.2},
+        )
+        self.assertEqual(upd.status_code, 200, upd.text)
+        self.assertEqual(len(upd.json()["parcels"][0]["boundary_polygon"]), 5)
+
+        me = self.client.get("/api/v1/profile", headers=headers)
+        self.assertEqual(me.status_code, 200)
+        self.assertEqual(len(me.json()["parcels"][0]["boundary_polygon"]), 5)
+
+        # Invalid polygon (< 3 vertices) must return 422 validation error
+        bad = self.client.put(
+            f"/api/v1/parcels/{new_id}",
+            headers=headers,
+            json={"boundary_polygon": [[39.9, 32.8], [39.91, 32.81]]},
+        )
+        self.assertEqual(bad.status_code, 422, bad.text)
+
+        # Clearing boundary_polygon via null persists cleanly
+        cleared = self.client.put(
+            f"/api/v1/parcels/{new_id}",
+            headers=headers,
+            json={"boundary_polygon": None},
+        )
+        self.assertEqual(cleared.status_code, 200, cleared.text)
+        self.assertIsNone(cleared.json()["parcels"][0]["boundary_polygon"])
+        self.assertEqual(len(initial_parcels), 1)
+
+
 

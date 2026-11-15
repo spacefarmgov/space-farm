@@ -200,30 +200,7 @@ export const SATELLITE_FILTERS: SatelliteFilterSpec[] = [
   },
 ];
 
-export function buildParcelAroundPoint(lat: number, lon: number, deltaDeg = 0.0042): Array<[number, number]> {
-  const cosLat = Math.max(0.2, Math.cos((lat * Math.PI) / 180));
-  const dLon = deltaDeg / cosLat;
-  return [
-    [Number((lat + deltaDeg * 0.72).toFixed(5)), Number((lon - dLon * 0.85).toFixed(5))],
-    [Number((lat + deltaDeg * 0.95).toFixed(5)), Number((lon + dLon * 0.65).toFixed(5))],
-    [Number((lat - deltaDeg * 0.55).toFixed(5)), Number((lon + dLon * 0.95).toFixed(5))],
-    [Number((lat - deltaDeg * 0.88).toFixed(5)), Number((lon - dLon * 0.62).toFixed(5))],
-  ];
-}
-
-export function computeGeodesicAreaHa(latlngs: Array<[number, number]>): number {
-  if (latlngs.length < 3) return 0;
-  const earthRadiusM = 6378137;
-  let areaRad = 0;
-  for (let i = 0; i < latlngs.length; i++) {
-    const p1 = latlngs[i];
-    const p2 = latlngs[(i + 1) % latlngs.length];
-    const lat1 = (p1[0] * Math.PI) / 180;
-    const lon1 = (p1[1] * Math.PI) / 180;
-    const lat2 = (p2[0] * Math.PI) / 180;
-    const lon2 = (p2[1] * Math.PI) / 180;
-    areaRad += (lon2 - lon1) * (2 + Math.sin(lat1) + Math.sin(lat2));
-  }
-  const areaM2 = Math.abs((areaRad * earthRadiusM * earthRadiusM) / 2);
-  return Math.max(0.1, Number((areaM2 / 10000).toFixed(1)));
-}
+export {
+  buildParcelAroundPoint,
+  computeGeodesicAreaHa,
+} from "../../../utils/polygonMetrics";

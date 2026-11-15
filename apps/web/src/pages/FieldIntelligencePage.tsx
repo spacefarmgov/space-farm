@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, CheckCircle2, Compass, Edit3, FlaskConical, Layers3, Mountain, Save } from "lucide-react";
+import { ArrowRight, CheckCircle2, Compass, Edit3, FlaskConical, Layers3, Mountain, Plus, Save } from "lucide-react";
 import { fetchOrbitalElevation } from "../api/extendedClient";
 import type { IrrigationType, SoilSourceType, SoilTexture } from "../api/types";
 import { AppShell } from "../components/layout/AppShell";
+import { LocationSearchControl } from "../components/map/LocationSearchControl";
 import { SatelliteFieldMap } from "../components/map/SatelliteFieldMap";
 import { useSpaceFarm } from "../context/SpaceFarmContext";
 import { VERIFIED_AZ_REGIONS } from "../data/regions";
 import { AZ_DISTRICTS } from "../data/azDistricts";
+import { formatCropName } from "../locales/translations";
 
 const FALLBACK_CROP_OPTIONS = [
   { crop_id: "wheat", name: "Wheat" },
@@ -34,12 +36,19 @@ export function FieldIntelligencePage() {
     runBaselineSimulation,
     baselineLoading,
     authToken,
+    parcels,
+    setActiveParcel,
     saveActiveParcelInputs,
+    saveDraftAsNewParcel,
     showToast,
   } = useSpaceFarm();
   const [savingParcel, setSavingParcel] = useState(false);
+  const [savingNewParcel, setSavingNewParcel] = useState(false);
+  const [switchingParcel, setSwitchingParcel] = useState(false);
   const [elevationM, setElevationM] = useState<number | null>(null);
   const navigate = useNavigate();
+
+  const activeParcel = parcels.find((p) => p.is_primary) ?? parcels[0] ?? null;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -94,9 +103,37 @@ export function FieldIntelligencePage() {
     if (res.ok) {
       showToast(
         locale === "az"
-          ? "Sahə və Laboratoriya pH/NPK analizi bazaya yazıldı"
-          : "Field & Lab pH/NPK profile saved to database",
+          ? "Sahə, sərhəd poliqonu və torpaq analizi bazaya yazıldı"
+          : "Field, boundary & lab pH/NPK profile saved to database",
       );
+    } else if (res.error) {
+      showToast(res.error);
+    }
+  }
+
+  async function handleSaveAsNewParcel() {
+    if (!validateInputs()) return;
+    setSavingNewParcel(true);
+    const res = await saveDraftAsNewParcel();
+    setSavingNewParcel(false);
+    if (res.ok) {
+      showToast(
+        locale === "az"
+          ? "Yeni sahə sərhəd poliqonu və analizlə hesabınıza əlavə edildi"
+          : "New field parcel created with boundary & soil profile",
+      );
+    } else if (res.error) {
+      showToast(res.error);
+    }
+  }
+
+  async function handleSwitchParcel(nextParcelId: string) {
+    if (!nextParcelId || nextParcelId === activeParcel?.id || switchingParcel) return;
+    setSwitchingParcel(true);
+    const res = await setActiveParcel(nextParcelId);
+    setSwitchingParcel(false);
+    if (res.ok) {
+      showToast(locale === "az" ? "Aktiv sahə dəyişdirildi" : "Switched active farm parcel");
     } else if (res.error) {
       showToast(res.error);
     }
@@ -114,24 +151,63 @@ export function FieldIntelligencePage() {
         </div>
 
         <div className="sf-field-split">
-          {/* Left 68%: Satellite Field Visualization */}
+          {/* Left 68%: Interactive Map Search + Satellite Field Visualization */}
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div className="sf-panel sf-panel-compact" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <div className="sf-label-row" style={{ margin: 0 }}>
+                <span style={{ fontSize: 12.5, fontWeight: 600 }}>
+                  {locale === "az"
+                    ? "Xəritədə Koordinat / Google Maps Linki / Məkan Axtarışı"
+                    : "Map Search — Paste Coordinates, Google Maps Link, or City/District"}
+                </span>
+                <span className="mono" style={{ fontSize: 11, color: "var(--accent-cyan)" }}>
+                  GPS · DMS · URL
+                </span>
+              </div>
+              <LocationSearchControl
+                language={locale}
+                variant="panel"
+                onSelectLocation={(sel) => {
+                  if (sel.source === "az_district" && sel.presetId) {
+                    selectRegion(sel.presetId);
+                  } else {
+                    setCustomCoordinates(sel.lat, sel.lon, sel.label);
+                  }
+                }}
+              />
+            </div>
+
             <SatelliteFieldMap
               latitude={draft.latitude}
               longitude={draft.longitude}
               selectedRegion={selectedRegion}
+              locale={locale}
+              boundaryPolygon={draft.boundaryPolygon}
+              areaHa={draft.areaHa}
               showIllustrativeBoundary={Boolean(selectedRegion?.illustrativePolygon)}
-              zoom={selectedRegion?.hasBoundary ? 14 : 11}
+              zoom={draft.hasBoundary || selectedRegion?.hasBoundary ? 14 : 11}
               height={620}
               onPickCoordinate={(lat, lon) => setCustomCoordinates(lat, lon)}
               onSelectRegion={selectRegion}
+              onChangePolygon={(poly, nextAreaHa, centroid) => {
+                updateDraft({
+                  hasBoundary: Boolean(poly && poly.length >= 3),
+                  boundaryPolygon: poly,
+                  ...(typeof nextAreaHa === "number" && nextAreaHa > 0 ? { areaHa: nextAreaHa } : {}),
+                  ...(centroid ? { latitude: centroid[0], longitude: centroid[1] } : {}),
+                });
+              }}
             />
 
             <div className="sf-panel sf-panel-compact" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
               <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>
-                {selectedRegion?.illustrativePolygon
-                  ? t.field.pilotBoundaryLabel
-                  : t.field.pointOnlyLabel}
+                {draft.boundaryPolygon && draft.boundaryPolygon.length >= 3
+                  ? locale === "az"
+                    ? `✓ Sahə sərhədi xəritələndi (${draft.areaHa.toFixed(1)} ha · ${draft.boundaryPolygon.length} künc) — küncləri düzəltmək üçün "✎ Sərhədi Düzəlt" sıxın`
+                    : `✓ Field boundary mapped (${draft.areaHa.toFixed(1)} ha · ${draft.boundaryPolygon.length} corners) — click "✎ Edit Boundary" to reshape`
+                  : selectedRegion?.illustrativePolygon
+                    ? t.field.pilotBoundaryLabel
+                    : t.field.pointOnlyLabel}
               </div>
               <button
                 type="button"
@@ -146,6 +222,48 @@ export function FieldIntelligencePage() {
 
           {/* Right 32%: Operational Inputs Form */}
           <aside className="sf-panel" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+            {authToken && parcels.length > 0 && (
+              <section
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: "1px solid rgba(139, 92, 246, 0.28)",
+                  background: "rgba(139, 92, 246, 0.08)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 8,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                  <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-primary)" }}>
+                    {locale === "az" ? "Saxlanılmış Sahələrim" : "My Saved Fields"}
+                  </span>
+                  <span className="mono" style={{ fontSize: 11, color: "var(--accent-cyan)" }}>
+                    {parcels.length} {locale === "az" ? "sahə" : parcels.length === 1 ? "parcel" : "parcels"}
+                  </span>
+                </div>
+                <select
+                  className="sf-select"
+                  aria-label={locale === "az" ? "Aktiv sahə seçicisi" : "Active saved parcel selector"}
+                  value={activeParcel?.id ?? ""}
+                  disabled={switchingParcel}
+                  onChange={(e) => void handleSwitchParcel(e.target.value)}
+                >
+                  {parcels.map((pcl) => (
+                    <option key={pcl.id} value={pcl.id}>
+                      {pcl.is_primary ? "★ " : ""}
+                      {pcl.label} · {pcl.area_ha.toFixed(1)} ha
+                      {pcl.boundary_polygon && pcl.boundary_polygon.length >= 3
+                        ? locale === "az"
+                          ? " [Sərhədli]"
+                          : " [Polygon]"
+                        : ""}
+                    </option>
+                  ))}
+                </select>
+              </section>
+            )}
+
             {/* 1. Field profile */}
             <section style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
@@ -596,7 +714,7 @@ export function FieldIntelligencePage() {
                     <option value="">{t.field.priorCropNone}</option>
                     {cropOptions.map((c) => (
                       <option key={c.crop_id} value={c.crop_id}>
-                        {c.name}
+                        {formatCropName(c.crop_id, c.name, locale)}
                       </option>
                     ))}
                   </select>
@@ -639,19 +757,38 @@ export function FieldIntelligencePage() {
                 <span>{t.actions.comparePlans}</span>
               </button>
               {authToken && (
-                <button
-                  type="button"
-                  className="sf-btn sf-btn-sm"
-                  onClick={handleSaveToDatabase}
-                  disabled={savingParcel}
-                >
-                  <Save size={15} aria-hidden="true" />
-                  <span>
-                    {savingParcel
-                      ? (locale === "az" ? "Saxlanılır..." : "Saving...")
-                      : (locale === "az" ? "Lab & Sahə Məlumatlarını Bazaya Saxla" : "Save Lab & Field to Account")}
-                  </span>
-                </button>
+                <>
+                  <button
+                    type="button"
+                    className="sf-btn sf-btn-sm"
+                    onClick={handleSaveToDatabase}
+                    disabled={savingParcel || savingNewParcel}
+                  >
+                    <Save size={15} aria-hidden="true" />
+                    <span>
+                      {savingParcel
+                        ? (locale === "az" ? "Saxlanılır..." : "Saving...")
+                        : (locale === "az"
+                            ? "Aktiv Sahəni & Sərhədi Bazaya Saxla"
+                            : "Save Lab, Boundary & Field")}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="sf-btn sf-btn-sm"
+                    onClick={handleSaveAsNewParcel}
+                    disabled={savingParcel || savingNewParcel}
+                  >
+                    <Plus size={15} aria-hidden="true" />
+                    <span>
+                      {savingNewParcel
+                        ? (locale === "az" ? "Əlavə olunur..." : "Adding field...")
+                        : (locale === "az"
+                            ? "Yeni Sahə Kimi Hesaba Əlavə Et"
+                            : "Save as New Field Parcel")}
+                    </span>
+                  </button>
+                </>
               )}
               <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{t.field.saveToStateNote}</span>
             </div>

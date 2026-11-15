@@ -173,7 +173,7 @@
 
 .sf-engine-chips {
   position: absolute;
-  top: 70px;
+  top: 118px;
   left: 20px;
   display: flex;
   flex-wrap: wrap;
@@ -206,19 +206,35 @@
    ================================================================ */
 .sf-hud-topbar {
   position: absolute;
-  top: 16px;
-  left: 20px;
-  right: 20px;
-  z-index: 20;
+  top: 14px;
+  left: 18px;
+  right: 18px;
+  z-index: 25;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
   pointer-events: none;
 }
 
-.sf-hud-topbar > * {
+.sf-hud-topbar-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.sf-hud-topbar-row > *,
+.sf-hud-subbar > * {
   pointer-events: auto;
+}
+
+.sf-hud-subbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
 }
 
 .sf-brand-pill {
@@ -230,6 +246,7 @@
   background: var(--sf-panel);
   border: 1px solid var(--sf-border);
   backdrop-filter: blur(18px);
+  flex-shrink: 0;
 }
 
 .sf-brand-orb {
@@ -258,13 +275,13 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 5px;
-  border-radius: 14px;
+  padding: 4px 6px;
+  border-radius: 13px;
   background: var(--sf-panel);
   border: 1px solid var(--sf-border);
   backdrop-filter: blur(18px);
   overflow-x: auto;
-  max-width: 44vw;
+  max-width: 100%;
   scrollbar-width: none;
 }
 
@@ -389,7 +406,7 @@
   left: 20px;
   bottom: 20px;
   z-index: 20;
-  max-width: min(440px, calc(100vw - 420px));
+  max-width: min(440px, calc(100% - 452px));
   display: flex;
   flex-direction: column;
   gap: 7px;
@@ -1305,7 +1322,7 @@
 
 .sf-cockpit-bar {
   position: absolute;
-  top: 72px;
+  top: 118px;
   left: 50%;
   transform: translateX(-50%);
   display: inline-flex;
@@ -1401,20 +1418,25 @@
 /* ================================================================
    RESPONSIVE TABLET & MOBILE BREAKPOINTS
    ================================================================ */
-@media (max-width: 1120px) {
-  .sf-hud-topbar {
-    flex-wrap: wrap;
-  }
+@media (max-width: 860px) {
   .sf-preset-strip {
-    order: 3;
     max-width: 100%;
-    width: 100%;
   }
   .sf-engine-chips {
-    top: 128px;
+    top: 168px;
   }
   .sf-cockpit-bar {
-    top: 122px;
+    top: 168px;
+  }
+}
+
+@media (max-width: 1120px) {
+  .sf-target-card,
+  .sf-target-card.is-compact {
+    width: 296px;
+  }
+  .sf-hud-filters {
+    max-width: min(440px, calc(100% - 352px));
   }
 }
 
@@ -1424,6 +1446,14 @@
     left: 10px;
     right: 10px;
     gap: 6px;
+  }
+  .sf-hud-topbar-row {
+    gap: 6px;
+  }
+  .sf-loc-search--hud {
+    order: 3;
+    flex: 1 1 100%;
+    max-width: none;
   }
   .sf-brand-pill {
     padding: 6px 10px;
