@@ -713,13 +713,13 @@ export const OrbitalEarthModule: React.FC<OrbitalEarthModuleProps> = ({
                   onClick={() => setSatOverflyTarget((v) => !v)}
                   title={
                     isAz
-                      ? "Real UTC orbiti və ya seçilən ərazi üzərindən keçid arasında dəyiş"
-                      : "Toggle Live UTC SGP4 orbit vs Simulated Target Overfly"
+                      ? "Real UTC orbiti və ya seçilən ərazi üzərindən hədəf keçidi arasında dəyiş"
+                      : "Toggle Live UTC SGP4 orbit vs Target Overfly Route"
                   }
                 >
                   {satOverflyTarget
                     ? isAz
-                      ? "Simulyasiya Keçidi"
+                      ? "Hədəf Keçidi"
                       : "Target Overfly"
                     : "LIVE SGP4 UTC"}
                 </button>

@@ -12,6 +12,7 @@ import {
   Trash2,
 } from "lucide-react";
 import {
+  SpaceFarmApiError,
   askSpaceFarmAi,
   clearAiHistory,
   fetchAiHistory,
@@ -176,6 +177,9 @@ export function SpaceFarmAiPage() {
       ]);
     } catch (err) {
       setMessages((prev) => prev.filter((m) => m.id !== optimisticUser.id));
+      if (err instanceof SpaceFarmApiError && err.status === 401) {
+        return;
+      }
       setErrorMsg(err instanceof Error ? err.message : t.errors.unexpectedBody);
       setInput(clean);
     } finally {

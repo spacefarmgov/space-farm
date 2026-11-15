@@ -23,6 +23,7 @@ import {
   registerAccount,
   runSimulationWithMode,
   saveUserProfile,
+  setUnauthorizedHandler,
   updateFarmParcel,
   type AuthSessionResponse,
   type WeatherAlertRecord,
@@ -238,6 +239,13 @@ function mapApiError(err: unknown, t: TranslationDictionary): ApiUiError {
   };
 }
 
+function extractMutationError(err: unknown, fallback: string): { ok: false; error?: string } {
+  if (err instanceof SpaceFarmApiError && err.status === 401) {
+    return { ok: false };
+  }
+  return { ok: false, error: err instanceof Error ? err.message : fallback };
+}
+
 export function SpaceFarmProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const [locale, setLocaleState] = useState<Locale>(readInitialLocale);
@@ -315,6 +323,17 @@ export function SpaceFarmProvider({ children }: { children: ReactNode }) {
   const stressAbortRef = useRef<AbortController | null>(null);
   const stressSeqRef = useRef(0);
   const toastTimerRef = useRef<number | null>(null);
+  const authTokenRef = useRef<string | null>(authToken);
+  const localeRef = useRef<Locale>(locale);
+  const unauthorizedHandledRef = useRef(false);
+
+  useEffect(() => {
+    authTokenRef.current = authToken;
+  }, [authToken]);
+
+  useEffect(() => {
+    localeRef.current = locale;
+  }, [locale]);
 
   const setLocale = useCallback((next: Locale) => {
     setLocaleState(next);
@@ -395,8 +414,48 @@ export function SpaceFarmProvider({ children }: { children: ReactNode }) {
     [locale, openAuthModal, showToast],
   );
 
+  const handleExpiredSession = useCallback(() => {
+    if (!authTokenRef.current || unauthorizedHandledRef.current) return;
+    unauthorizedHandledRef.current = true;
+    authTokenRef.current = null;
+    setAuthToken(null);
+    setUserProfile(null);
+    setParcels([]);
+    setActiveAlerts([]);
+    persistSessionUser(null);
+    try {
+      window.localStorage.removeItem(AUTH_TOKEN_KEY);
+    } catch {
+      // ignore storage errors
+    }
+    const currentPath = window.location.pathname;
+    const silentRoutes = new Set(["/", "/login", "/register"]);
+    if (!silentRoutes.has(currentPath)) {
+      const expiredMsg =
+        localeRef.current === "az"
+          ? "Sessiyanız yenilənməlidir. Davam etmək üçün yenidən daxil olun."
+          : "Your session expired. Please sign in again to continue.";
+      setAuthAlertMessage(expiredMsg);
+      setPendingRedirectPath(currentPath);
+      showToast(expiredMsg);
+      navigate("/login", {
+        replace: true,
+        state: { alertMessage: expiredMsg, redirectTo: currentPath },
+      });
+    }
+  }, [navigate, persistSessionUser, showToast]);
+
+  useEffect(() => {
+    setUnauthorizedHandler(handleExpiredSession);
+    return () => {
+      setUnauthorizedHandler(null);
+    };
+  }, [handleExpiredSession]);
+
   const applyAuthSession = useCallback(
     (token: string, profile: WorkspaceUserProfile, nextParcels: WorkspaceParcel[]) => {
+      unauthorizedHandledRef.current = false;
+      authTokenRef.current = token;
       setAuthToken(token);
       setUserProfile(profile);
       setParcels(nextParcels);
@@ -457,16 +516,7 @@ export function SpaceFarmProvider({ children }: { children: ReactNode }) {
       .catch((err) => {
         if (cancelled) return;
         if (err instanceof SpaceFarmApiError && err.status === 401) {
-          setAuthToken(null);
-          setUserProfile(null);
-          setParcels([]);
-          setActiveAlerts([]);
-          persistSessionUser(null);
-          try {
-            window.localStorage.removeItem(AUTH_TOKEN_KEY);
-          } catch {
-            // ignore storage errors
-          }
+          handleExpiredSession();
         }
       });
     fetchAlertsOverview(authToken)
@@ -480,7 +530,7 @@ export function SpaceFarmProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [authToken, persistSessionUser]);
+  }, [authToken, handleExpiredSession]);
 
   const loginUser = useCallback(
     async (rawEmail: string, password: string): Promise<AuthActionResult> => {
@@ -574,9 +624,12 @@ export function SpaceFarmProvider({ children }: { children: ReactNode }) {
   );
 
   const logoutUser = useCallback(() => {
+    unauthorizedHandledRef.current = false;
+    authTokenRef.current = null;
     setAuthToken(null);
     setUserProfile(null);
     setParcels([]);
+    setActiveAlerts([]);
     try {
       window.localStorage.removeItem(AUTH_TOKEN_KEY);
     } catch {
@@ -603,7 +656,7 @@ export function SpaceFarmProvider({ children }: { children: ReactNode }) {
         showToast(TRANSLATIONS[locale].profilePage.savedToast);
         return { ok: true };
       } catch (err) {
-        return { ok: false, error: err instanceof Error ? err.message : "Failed to save profile" };
+        return extractMutationError(err, "Failed to save profile");
       }
     },
     [authToken, locale, persistSessionUser, showToast],
@@ -621,7 +674,7 @@ export function SpaceFarmProvider({ children }: { children: ReactNode }) {
         }
         return { ok: true };
       } catch (err) {
-        return { ok: false, error: err instanceof Error ? err.message : "Failed to add parcel" };
+        return extractMutationError(err, "Failed to add parcel");
       }
     },
     [authToken],
@@ -639,7 +692,7 @@ export function SpaceFarmProvider({ children }: { children: ReactNode }) {
         }
         return { ok: true };
       } catch (err) {
-        return { ok: false, error: err instanceof Error ? err.message : "Failed to activate parcel" };
+        return extractMutationError(err, "Failed to activate parcel");
       }
     },
     [authToken],
@@ -653,7 +706,7 @@ export function SpaceFarmProvider({ children }: { children: ReactNode }) {
         setParcels(res.parcels);
         return { ok: true };
       } catch (err) {
-        return { ok: false, error: err instanceof Error ? err.message : "Failed to delete parcel" };
+        return extractMutationError(err, "Failed to delete parcel");
       }
     },
     [authToken],
@@ -703,7 +756,7 @@ export function SpaceFarmProvider({ children }: { children: ReactNode }) {
         setParcels(res.parcels);
         return { ok: true };
       } catch (err) {
-        return { ok: false, error: err instanceof Error ? err.message : "Failed to save parcel lab inputs" };
+        return extractMutationError(err, "Failed to save parcel lab inputs");
       }
     },
     [authToken, draft, parcels],

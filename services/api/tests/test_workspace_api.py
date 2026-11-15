@@ -736,6 +736,53 @@ class WorkspaceApiTests(unittest.TestCase):
 
         self.assertEqual(captured, [("space.farm.gov@gmail.com", "abcdefghijklmnop")])
 
+    def test_v2_token_rehydrates_user_and_primary_parcel_across_containers(self) -> None:
+        with patch.dict(
+            os.environ,
+            {"SPACEFARM_AUTH_SECRET": "shared-vercel-test-secret-abcdef123456"},
+            clear=False,
+        ):
+            reg = self.client.post(
+                "/api/v1/auth/register",
+                json={
+                    "name": "Emin Rahimov",
+                    "email": "coldstart@farmer.az",
+                    "password": "strongpassword1",
+                    "region": "Quba",
+                },
+            )
+            self.assertEqual(reg.status_code, 201, reg.text)
+            reg_body = reg.json()
+            token = reg_body["token"]
+            user_id = reg_body["user"]["id"]
+            parcel_id = reg_body["parcels"][0]["id"]
+            self.assertTrue(token.startswith("v2."))
 
+            with tempfile.TemporaryDirectory() as cold_dir:
+                cold_store = SpaceFarmStore(Settings(data_dir=cold_dir))
+                self.assertEqual(cold_store.get_user_bundle(user_id), (None, []))
+
+                cold_app = create_app()
+                cold_app.dependency_overrides[_get_store] = lambda: cold_store
+                with TestClient(cold_app) as cold_client:
+                    headers = {"Authorization": f"Bearer {token}"}
+
+                    prof = cold_client.get("/api/v1/profile", headers=headers)
+                    self.assertEqual(prof.status_code, 200, prof.text)
+                    prof_body = prof.json()
+                    self.assertEqual(prof_body["user"]["id"], user_id)
+                    self.assertEqual(prof_body["user"]["email"], "coldstart@farmer.az")
+                    self.assertEqual(prof_body["parcels"][0]["id"], parcel_id)
+
+                    upd = cold_client.put(
+                        f"/api/v1/parcels/{parcel_id}",
+                        headers=headers,
+                        json={"soil_ph": 7.2, "irrigation_type": "irrigated", "irrigation_budget_mm": 350.0},
+                    )
+                    self.assertEqual(upd.status_code, 200, upd.text)
+                    self.assertAlmostEqual(upd.json()["parcels"][0]["soil_ph"], 7.2)
+
+                    alerts = cold_client.get("/api/v1/alerts/overview", headers=headers)
+                    self.assertEqual(alerts.status_code, 200, alerts.text)
 
 

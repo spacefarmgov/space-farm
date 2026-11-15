@@ -245,6 +245,12 @@ export interface AiAssistResponse {
   actions: AiActionLink[];
 }
 
+let onUnauthorizedCallback: (() => void) | null = null;
+
+export function setUnauthorizedHandler(handler: (() => void) | null): void {
+  onUnauthorizedCallback = handler;
+}
+
 async function requestWorkspaceJson<T>(
   path: string,
   options: RequestInit = {},
@@ -269,6 +275,9 @@ async function requestWorkspaceJson<T>(
     parsed = null;
   }
   if (!resp.ok) {
+    if (resp.status === 401 && token && onUnauthorizedCallback) {
+      onUnauthorizedCallback();
+    }
     const env = parsed as Partial<ErrorEnvelope> | null;
     const msg =
       env?.error?.message ||

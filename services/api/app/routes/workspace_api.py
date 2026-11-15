@@ -61,14 +61,14 @@ def _require_user_id(
             detail="Authentication token is required.",
         )
     token = authorization.split(" ", 1)[1].strip()
-    user_id = store.verify_token(token)
-    if not user_id:
+    claims = store.verify_token_claims(token)
+    if not claims:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired session token.",
         )
-    profile, _ = store.get_user_bundle(user_id)
-    if not profile:
+    user_id = store.ensure_session_user(claims)
+    if not user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Account no longer exists.",

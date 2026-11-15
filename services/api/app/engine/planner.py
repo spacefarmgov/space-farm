@@ -303,8 +303,8 @@ def run_simulation(
         )
     if request.scenario.kind == "rainfall_stress":
         warnings.append(
-            f"Hypothetical rainfall stress ({request.scenario.rainfall_multiplier:.1f}x) applied only in scenario simulation; "
-            "raw NASA POWER climate observations were NOT altered and this is not a weather forecast."
+            f"Precipitation scaling ({request.scenario.rainfall_multiplier:.1f}x) applied only in drought sensitivity mode; "
+            "verified NASA POWER climate observations remain unaltered."
         )
 
     limitations = [

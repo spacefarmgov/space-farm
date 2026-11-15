@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import json
@@ -385,15 +386,58 @@ class SpaceFarmStore:
         except (ValueError, TypeError):
             return False
 
-    def create_token(self, user_id: str, ttl_seconds: int = 86400 * 14) -> str:
+    def create_token(
+        self,
+        user_id: str,
+        ttl_seconds: int = 86400 * 14,
+        *,
+        profile: dict[str, Any] | None = None,
+        parcels: list[dict[str, Any]] | None = None,
+    ) -> str:
         exp = int(time.time()) + ttl_seconds
-        payload = f"{user_id}:{exp}"
-        sig = hmac.new(self._signing_secret(), payload.encode("utf-8"), hashlib.sha256).hexdigest()
-        return f"{payload}:{sig}"
+        if profile is None and parcels is None:
+            loaded_profile, loaded_parcels = self.get_user_bundle(user_id)
+            profile = loaded_profile
+            parcels = loaded_parcels
+        primary_pid = str(parcels[0]["id"]) if parcels else ""
+        claims: dict[str, Any] = {
+            "v": 2,
+            "sub": user_id,
+            "exp": exp,
+            "email": str((profile or {}).get("email") or ""),
+            "name": str((profile or {}).get("name") or ""),
+            "region": str((profile or {}).get("region") or "Ganja-Dashkasan"),
+            "pid": primary_pid,
+        }
+        raw = json.dumps(claims, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+        encoded = base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+        sig = hmac.new(self._signing_secret(), encoded.encode("ascii"), hashlib.sha256).hexdigest()
+        return f"v2.{encoded}.{sig}"
 
-    def verify_token(self, token: str) -> str | None:
+    def verify_token_claims(self, token: str) -> dict[str, Any] | None:
+        clean = token.strip()
+        if not clean:
+            return None
         try:
-            user_id, exp_str, sig = token.strip().split(":", 2)
+            if clean.startswith("v2."):
+                _, encoded, sig = clean.split(".", 2)
+                expected = hmac.new(
+                    self._signing_secret(), encoded.encode("ascii"), hashlib.sha256
+                ).hexdigest()
+                if not hmac.compare_digest(sig, expected):
+                    return None
+                padded = encoded + ("=" * ((-len(encoded)) % 4))
+                claims = json.loads(base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8"))
+                if not isinstance(claims, dict):
+                    return None
+                if int(claims.get("exp", 0)) < int(time.time()):
+                    return None
+                sub = str(claims.get("sub") or "").strip()
+                if not sub:
+                    return None
+                return claims
+
+            user_id, exp_str, sig = clean.split(":", 2)
             payload = f"{user_id}:{exp_str}"
             expected = hmac.new(
                 self._signing_secret(), payload.encode("utf-8"), hashlib.sha256
@@ -402,9 +446,45 @@ class SpaceFarmStore:
                 return None
             if int(exp_str) < int(time.time()):
                 return None
-            return user_id
-        except (ValueError, TypeError):
+            return {"v": 1, "sub": user_id, "exp": int(exp_str)}
+        except (ValueError, TypeError, json.JSONDecodeError, UnicodeDecodeError):
             return None
+
+    def verify_token(self, token: str) -> str | None:
+        claims = self.verify_token_claims(token)
+        return str(claims["sub"]) if claims else None
+
+    def ensure_session_user(self, claims: dict[str, Any]) -> str | None:
+        """Verify user row exists in local SQLite, rehydrating signed v2 claims across cold serverless containers."""
+        user_id = str(claims.get("sub") or "").strip()
+        if not user_id:
+            return None
+        profile, _ = self.get_user_bundle(user_id)
+        if profile is not None:
+            return user_id
+        if claims.get("v") != 2:
+            return None
+        email = str(claims.get("email") or "").strip().lower()
+        if not email or "@" not in email:
+            return None
+        name = str(claims.get("name") or email.split("@")[0]).strip()
+        region = str(claims.get("region") or "Ganja-Dashkasan").strip()
+        pid = str(claims.get("pid") or "").strip() or None
+        with self._connect() as conn:
+            existing_by_email = conn.execute(
+                "SELECT id FROM users WHERE email = ?", (email,)
+            ).fetchone()
+            if existing_by_email is not None:
+                return str(existing_by_email["id"])
+            return self._insert_user_with_parcel(
+                conn,
+                name=name,
+                email=email,
+                pw_hash=f"session-rehydrated${secrets.token_hex(16)}",
+                region=region,
+                explicit_user_id=user_id,
+                explicit_parcel_id=pid,
+            )
 
     @staticmethod
     def _row_to_profile(row: sqlite3.Row) -> dict[str, Any]:
@@ -469,6 +549,8 @@ class SpaceFarmStore:
         region: str,
         google_sub: str | None = None,
         avatar_data_url: str | None = None,
+        explicit_user_id: str | None = None,
+        explicit_parcel_id: str | None = None,
     ) -> str:
         clean_email = email.strip().lower()
         clean_name = name.strip() or "SpaceFarm User"
@@ -479,11 +561,11 @@ class SpaceFarmStore:
         username = f"@{handle_base[:24]}" if handle_base else "@farmer"
         now = _now_iso()
         today_str = now[:10]
-        user_id = f"usr-{uuid.uuid4().hex[:12]}"
+        user_id = explicit_user_id or f"usr-{uuid.uuid4().hex[:12]}"
 
         reg_id, parcel_label, lat, lon, area_ha, crop_id = _resolve_region_seed(clean_region)
         lab_seed = _default_lab_profile(reg_id)
-        parcel_id = f"pcl-{uuid.uuid4().hex[:10]}"
+        parcel_id = explicit_parcel_id or f"pcl-{uuid.uuid4().hex[:10]}"
 
         conn.execute(
             """

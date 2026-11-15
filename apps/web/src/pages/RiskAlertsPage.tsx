@@ -20,6 +20,7 @@ import {
 import { AppShell } from "../components/layout/AppShell";
 import { useSpaceFarm } from "../context/SpaceFarmContext";
 import {
+  SpaceFarmApiError,
   fetchAlertsOverview,
   scanAlertsNow,
   setWeatherAlertStatus,
@@ -76,6 +77,16 @@ export function RiskAlertsPage() {
     setHeatThresh(String(data.preferences.custom_heat_c));
   }, []);
 
+  const handleAlertsError = useCallback(
+    (err: unknown) => {
+      if (err instanceof SpaceFarmApiError && err.status === 401) {
+        return;
+      }
+      setErrorMsg(err instanceof Error ? err.message : t.errors.unexpectedBody);
+    },
+    [t.errors.unexpectedBody],
+  );
+
   const loadOverview = useCallback(async () => {
     if (!authToken) return;
     setLoading(true);
@@ -85,11 +96,11 @@ export function RiskAlertsPage() {
       setOverview(data);
       syncPrefsForm(data);
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : t.errors.unexpectedBody);
+      handleAlertsError(err);
     } finally {
       setLoading(false);
     }
-  }, [authToken, syncPrefsForm, t.errors.unexpectedBody]);
+  }, [authToken, handleAlertsError, syncPrefsForm]);
 
   useEffect(() => {
     void loadOverview();
@@ -105,7 +116,7 @@ export function RiskAlertsPage() {
       syncPrefsForm(data);
       showToast(ap.scanDoneToast);
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : t.errors.unexpectedBody);
+      handleAlertsError(err);
     } finally {
       setScanning(false);
     }
@@ -120,7 +131,7 @@ export function RiskAlertsPage() {
       setOverview(data);
       showToast(ap.dispatchDoneToast);
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : t.errors.unexpectedBody);
+      handleAlertsError(err);
     } finally {
       setVerifying(false);
     }
@@ -145,7 +156,7 @@ export function RiskAlertsPage() {
       syncPrefsForm(data);
       showToast(ap.prefsSavedToast);
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : t.errors.unexpectedBody);
+      handleAlertsError(err);
     } finally {
       setSavingPrefs(false);
     }
@@ -164,7 +175,7 @@ export function RiskAlertsPage() {
           : prev,
       );
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : t.errors.unexpectedBody);
+      handleAlertsError(err);
     }
   }
 

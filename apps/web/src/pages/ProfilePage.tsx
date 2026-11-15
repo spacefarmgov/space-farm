@@ -146,8 +146,8 @@ export function ProfilePage() {
       avatar_data_url: avatarUrl,
     });
     setSaving(false);
-    if (!res.ok) {
-      setFormError(res.error ?? "Failed to update profile");
+    if (!res.ok && res.error) {
+      setFormError(res.error);
     }
   }
 
@@ -245,7 +245,7 @@ export function ProfilePage() {
     });
     setAddingParcel(false);
     if (!res.ok) {
-      setParcelError(res.error ?? "Failed to create parcel");
+      if (res.error) setParcelError(res.error);
       return;
     }
     setParcelLabel("");
