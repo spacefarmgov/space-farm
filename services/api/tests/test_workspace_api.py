@@ -22,11 +22,19 @@ from app.storage.sqlite_store import SpaceFarmStore  # noqa: E402
 
 
 class WorkspaceApiTests(unittest.TestCase):
+    _ISOLATED_ENV_OVERRIDES: dict[str, str] = {
+        "DATA_MODE": "cached",
+        "APP_ENV": "test",
+        "SMTP_HOST": "",
+        "SMTP_USER": "",
+        "SMTP_PASSWORD": "",
+        "GOOGLE_CLIENT_ID": "",
+    }
+
     def setUp(self) -> None:
-        self._old_mode = os.environ.get("DATA_MODE")
-        self._old_env = os.environ.get("APP_ENV")
-        os.environ["DATA_MODE"] = "cached"
-        os.environ["APP_ENV"] = "test"
+        self._saved_env = {k: os.environ.get(k) for k in self._ISOLATED_ENV_OVERRIDES}
+        for key, value in self._ISOLATED_ENV_OVERRIDES.items():
+            os.environ[key] = value
         get_settings.cache_clear()
 
         self._tmp = tempfile.TemporaryDirectory()
@@ -40,14 +48,11 @@ class WorkspaceApiTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.client.close()
         self._tmp.cleanup()
-        if self._old_mode is None:
-            os.environ.pop("DATA_MODE", None)
-        else:
-            os.environ["DATA_MODE"] = self._old_mode
-        if self._old_env is None:
-            os.environ.pop("APP_ENV", None)
-        else:
-            os.environ["APP_ENV"] = self._old_env
+        for key, prev in self._saved_env.items():
+            if prev is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = prev
         get_settings.cache_clear()
 
     def _register_sample(self, email: str = "ayla@agronomy.az", region: str = "Ganja-Dashkasan") -> tuple[str, dict, list[dict]]:
@@ -498,57 +503,60 @@ class WorkspaceApiTests(unittest.TestCase):
         def _fake_smtp(settings, recipient, subject, body):
             sent_payloads.append((recipient, subject, body))
 
-        old_host = os.environ.get("SMTP_HOST")
-        try:
-            os.environ["SMTP_HOST"] = "smtp.gmail.com"
+        with patch.dict(
+            os.environ,
+            {
+                "SMTP_HOST": "smtp.gmail.com",
+                "SMTP_USER": "alerts@spacefarm.az",
+                "SMTP_PASSWORD": "app-password-secret",
+            },
+            clear=False,
+        ):
             get_settings.cache_clear()
-            with patch("app.services.notifier._send_smtp_sync", side_effect=_fake_smtp):
-                res = self.client.post(
-                    "/api/v1/auth/forgot-password",
-                    json={"email": "forgot-flow@farmer.az"},
+            try:
+                with patch("app.services.notifier._send_smtp_sync", side_effect=_fake_smtp):
+                    res = self.client.post(
+                        "/api/v1/auth/forgot-password",
+                        json={"email": "forgot-flow@farmer.az"},
+                    )
+                self.assertEqual(res.status_code, 200, res.text)
+                self.assertTrue(res.json()["code_dispatched"])
+                self.assertEqual(len(sent_payloads), 1)
+                import re
+                match = re.search(r"\b(\d{6})\b", sent_payloads[0][1])
+                self.assertIsNotNone(match, sent_payloads[0][1])
+                reset_code = match.group(1)
+
+                # Wrong 6-digit recovery code rejected
+                bad = self.client.post(
+                    "/api/v1/auth/reset-password",
+                    json={"email": "forgot-flow@farmer.az", "code": "000001" if reset_code != "000001" else "000002", "new_password": "newpassword123"},
                 )
-            self.assertEqual(res.status_code, 200, res.text)
-            self.assertTrue(res.json()["code_dispatched"])
-            self.assertEqual(len(sent_payloads), 1)
-            import re
-            match = re.search(r"\b(\d{6})\b", sent_payloads[0][1])
-            self.assertIsNotNone(match, sent_payloads[0][1])
-            reset_code = match.group(1)
+                self.assertEqual(bad.status_code, 400)
 
-            # Wrong 6-digit recovery code rejected
-            bad = self.client.post(
-                "/api/v1/auth/reset-password",
-                json={"email": "forgot-flow@farmer.az", "code": "000001" if reset_code != "000001" else "000002", "new_password": "newpassword123"},
-            )
-            self.assertEqual(bad.status_code, 400)
+                # Valid recovery code resets password
+                good = self.client.post(
+                    "/api/v1/auth/reset-password",
+                    json={"email": "forgot-flow@farmer.az", "code": reset_code, "new_password": "newpassword123"},
+                )
+                self.assertEqual(good.status_code, 200, good.text)
+                self.assertTrue(good.json()["ok"])
 
-            # Valid recovery code resets password
-            good = self.client.post(
-                "/api/v1/auth/reset-password",
-                json={"email": "forgot-flow@farmer.az", "code": reset_code, "new_password": "newpassword123"},
-            )
-            self.assertEqual(good.status_code, 200, good.text)
-            self.assertTrue(good.json()["ok"])
+                # Old password fails, new password succeeds
+                old_login = self.client.post(
+                    "/api/v1/auth/login",
+                    json={"email": "forgot-flow@farmer.az", "password": "securepassword1"},
+                )
+                self.assertEqual(old_login.status_code, 401)
 
-            # Old password fails, new password succeeds
-            old_login = self.client.post(
-                "/api/v1/auth/login",
-                json={"email": "forgot-flow@farmer.az", "password": "securepassword1"},
-            )
-            self.assertEqual(old_login.status_code, 401)
-
-            new_login = self.client.post(
-                "/api/v1/auth/login",
-                json={"email": "forgot-flow@farmer.az", "password": "newpassword123"},
-            )
-            self.assertEqual(new_login.status_code, 200, new_login.text)
-            self.assertTrue(new_login.json()["token"])
-        finally:
-            if old_host is None:
-                os.environ.pop("SMTP_HOST", None)
-            else:
-                os.environ["SMTP_HOST"] = old_host
-            get_settings.cache_clear()
+                new_login = self.client.post(
+                    "/api/v1/auth/login",
+                    json={"email": "forgot-flow@farmer.az", "password": "newpassword123"},
+                )
+                self.assertEqual(new_login.status_code, 200, new_login.text)
+                self.assertTrue(new_login.json()["token"])
+            finally:
+                get_settings.cache_clear()
 
     def test_google_oauth_verification(self) -> None:
         # Unconfigured GOOGLE_CLIENT_ID reports 503 honestly
@@ -659,6 +667,27 @@ class WorkspaceApiTests(unittest.TestCase):
         self.assertAlmostEqual(float(parcels[0]["latitude"]), 38.456, places=3)
         self.assertAlmostEqual(float(parcels[0]["longitude"]), 48.875, places=3)
         self.assertEqual(parcels[0]["region_id"], "astara")
+
+    def test_vercel_serverless_runtime_paths_and_entrypoint(self) -> None:
+        from app.config import Settings
+
+        with patch.dict(
+            os.environ,
+            {"VERCEL": "1", "VERCEL_URL": "space-farm.vercel.app"},
+            clear=False,
+        ):
+            cfg = Settings()
+            self.assertTrue(cfg.is_vercel)
+            self.assertEqual(cfg.runtime_data_dir_path.name, "spacefarm-data")
+            self.assertEqual(cfg.cache_dir_path.name, "cache")
+            self.assertIn("https://space-farm.vercel.app", cfg.cors_origin_list)
+
+        repo_root = Path(__file__).resolve().parents[3]
+        if str(repo_root) not in sys.path:
+            sys.path.insert(0, str(repo_root))
+        from api.index import app as vercel_app
+
+        self.assertEqual(vercel_app.title, "Space Farm API")
 
 
 

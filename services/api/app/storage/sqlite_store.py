@@ -149,7 +149,7 @@ class SpaceFarmStore:
 
     def __init__(self, settings: Settings | None = None) -> None:
         self.settings = settings or get_settings()
-        self.data_root = self.settings.data_root_path
+        self.data_root = self.settings.runtime_data_dir_path
         self.db_path = self.data_root / "spacefarm.db"
         self.secret_path = self.data_root / ".auth_secret"
         os.makedirs(self.data_root, exist_ok=True)

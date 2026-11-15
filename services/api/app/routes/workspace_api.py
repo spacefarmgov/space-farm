@@ -21,6 +21,7 @@ from app.engine.planner import run_simulation
 from app.engine.risk_analyzer import scan_user_parcels
 from app.services.notifier import (
     dispatch_alert_notifications,
+    is_smtp_configured,
     normalize_e164_phone,
     send_auth_otp_email,
     send_email_notification,
@@ -407,7 +408,7 @@ def get_auth_providers() -> dict[str, Any]:
     return {
         "google_enabled": bool(client_id),
         "google_client_id": client_id,
-        "smtp_configured": bool(settings.smtp_host.strip()),
+        "smtp_configured": is_smtp_configured(settings),
     }
 
 
@@ -441,7 +442,7 @@ async def request_registration_otp(
             detail="An account with this email already exists.",
         )
     settings = get_settings()
-    if not settings.smtp_host.strip():
+    if not is_smtp_configured(settings):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Email OTP delivery is not configured yet (set SMTP_HOST, SMTP_USER, SMTP_PASSWORD in .env).",
@@ -530,7 +531,7 @@ async def request_password_reset(
 ) -> dict[str, Any]:
     settings = get_settings()
     reset_code_rec = store.create_password_reset_code(payload.email, ttl_seconds=900)
-    smtp_ready = bool(settings.smtp_host.strip())
+    smtp_ready = is_smtp_configured(settings)
     delivery_status = "processed_no_leak"
     if reset_code_rec is not None:
         email_res = await send_password_reset_code_email(
@@ -770,7 +771,7 @@ def _alerts_overview_payload(
         "contacts": {
             "email": user.get("email") or "",
             "phone_e164": phone_e164,
-            "smtp_configured": bool(settings.smtp_host.strip()),
+            "smtp_configured": is_smtp_configured(settings),
             "sms_configured": bool(
                 (settings.twilio_account_sid.strip() and settings.twilio_auth_token.strip() and settings.twilio_from_number.strip())
                 or settings.sms_webhook_url.strip()

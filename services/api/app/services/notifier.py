@@ -73,6 +73,20 @@ def _send_smtp_sync(
         server.send_message(msg)
 
 
+def is_smtp_configured(settings: Settings) -> bool:
+    """Return True only when SMTP host has complete required authentication credentials."""
+    host = settings.smtp_host.strip()
+    if not host:
+        return False
+    user = settings.smtp_user.strip()
+    password = settings.smtp_password.strip()
+    if user and not password:
+        return False
+    if "gmail.com" in host.lower() and not (user and password):
+        return False
+    return True
+
+
 async def send_email_notification(
     settings: Settings,
     recipient_email: str,
@@ -88,12 +102,12 @@ async def send_email_notification(
             "error_detail": "Farmer email address is missing or invalid.",
         }
 
-    if not settings.smtp_host.strip():
-        logger.info("Email notification queued in outbox (SMTP_HOST unset) -> %s | %s", clean_email, subject)
+    if not is_smtp_configured(settings):
+        logger.info("Email notification queued in outbox (SMTP credentials incomplete) -> %s | %s", clean_email, subject)
         return {
             "provider": "local_outbox_unconfigured",
             "status": "queued_awaiting_credentials",
-            "error_detail": "SMTP_HOST / SMTP_USER / SMTP_PASSWORD not set in .env; payload saved to SQLite dispatch outbox.",
+            "error_detail": "SMTP_HOST, SMTP_USER, or SMTP_PASSWORD not set in .env; payload saved to SQLite dispatch outbox.",
         }
 
     try:

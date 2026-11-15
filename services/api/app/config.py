@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import tempfile
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -106,13 +107,30 @@ class Settings(BaseSettings):
         return str(v or "").strip()
 
     @property
+    def is_vercel(self) -> bool:
+        return bool(os.getenv("VERCEL"))
+
+    @property
     def cors_origin_list(self) -> list[str]:
         origins = [item.strip() for item in self.cors_origins.split(",") if item.strip()]
+        vercel_url = os.getenv("VERCEL_URL", "").strip()
+        if vercel_url:
+            vercel_origin = vercel_url if vercel_url.startswith("http") else f"https://{vercel_url}"
+            if vercel_origin not in origins:
+                origins.append(vercel_origin)
         return origins or ["http://localhost:5173"]
 
     @property
     def data_root_path(self) -> Path:
         return _resolve_repo_path(self.data_dir)
+
+    @property
+    def runtime_data_dir_path(self) -> Path:
+        """Writable runtime directory for SQLite and auth secrets (uses /tmp on read-only serverless hosts)."""
+        primary = self.data_root_path
+        if self.is_vercel or (primary.exists() and not os.access(primary, os.W_OK)):
+            return Path(tempfile.gettempdir()) / "spacefarm-data"
+        return primary
 
     @property
     def raw_data_dir(self) -> Path:
@@ -128,6 +146,8 @@ class Settings(BaseSettings):
 
     @property
     def cache_dir_path(self) -> Path:
+        if self.is_vercel and self.data_cache_dir == "./data/cache":
+            return self.runtime_data_dir_path / "cache"
         return _resolve_repo_path(self.data_cache_dir)
 
     @property

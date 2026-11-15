@@ -112,7 +112,11 @@ class RiskMonitorWorker:
                 continue
 
     def start(self) -> None:
-        if not self.settings.risk_worker_enabled or self.settings.app_env == "test":
+        if (
+            not self.settings.risk_worker_enabled
+            or self.settings.app_env == "test"
+            or self.settings.is_vercel
+        ):
             return
         if self._task and not self._task.done():
             return
