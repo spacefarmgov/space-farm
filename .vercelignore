@@ -4,7 +4,6 @@
 !.env.example
 apps/web/.env
 apps/web/node_modules
-apps/web/dist
 data/cache
 data/tmp
 data/.auth_secret

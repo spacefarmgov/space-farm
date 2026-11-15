@@ -51,6 +51,7 @@ export function AuthPage({ initialMode }: { initialMode: AuthRouteMode }) {
     authAlertMessage,
     pendingRedirectPath,
     loginUser,
+    registerUser,
     establishAuthSession,
   } = useSpaceFarm();
   const navigate = useNavigate();
@@ -399,28 +400,42 @@ export function AuthPage({ initialMode }: { initialMode: AuthRouteMode }) {
 
     if (mode === "register") {
       setIsSubmitting(true);
-      try {
-        await requestRegistrationOtp({
-          name: trimmedName,
-          email: trimmedEmail,
-          password,
-          region,
-        });
-        setRegisterStep("otp");
-        setOtpCode("");
-        setOtpCooldown(45);
+      if (authProviders.smtp_configured) {
+        try {
+          await requestRegistrationOtp({
+            name: trimmedName,
+            email: trimmedEmail,
+            password,
+            region,
+          });
+          setRegisterStep("otp");
+          setOtpCode("");
+          setOtpCooldown(45);
+          setStatusNotice({
+            message: `${ap.otpSentNotice} ${trimmedEmail}`,
+            tone: "success",
+          });
+        } catch (err) {
+          setStatusNotice({
+            message: err instanceof Error ? err.message : ap.smtpRequiredNotice,
+            tone: "error",
+          });
+        } finally {
+          setIsSubmitting(false);
+        }
+        return;
+      }
+
+      const regResult = await registerUser(trimmedName, trimmedEmail, password, region);
+      setIsSubmitting(false);
+      if (!regResult.ok) {
         setStatusNotice({
-          message: `${ap.otpSentNotice} ${trimmedEmail}`,
-          tone: "success",
-        });
-      } catch (err) {
-        setStatusNotice({
-          message: err instanceof Error ? err.message : ap.smtpRequiredNotice,
+          message: regResult.error ?? t.auth.invalidCredentials,
           tone: "error",
         });
-      } finally {
-        setIsSubmitting(false);
+        return;
       }
+      navigate(redirectTarget, { replace: true });
       return;
     }
 

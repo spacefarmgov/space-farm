@@ -1,21 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "cd apps/web && npm install && npm run build",
-  "outputDirectory": "apps/web/dist",
   "functions": {
     "api/index.py": {
       "maxDuration": 30,
-      "includeFiles": "{services/api/app/**,data/catalog/**,data/processed/**,data/raw/**,contracts/**}"
+      "includeFiles": "{services/api/app/**,data/catalog/**,data/processed/**,data/raw/**,contracts/**,apps/web/dist/**}"
     }
-  },
-  "rewrites": [
-    {
-      "source": "/api/(.*)",
-      "destination": "/api/index"
-    },
-    {
-      "source": "/((?!api/|assets/|earth-3d/|.*\\..*).*)",
-      "destination": "/index.html"
-    }
-  ]
+  }
 }

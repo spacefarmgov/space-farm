@@ -6,6 +6,7 @@
 *Built by **Team CODE44** for the **2026 NASA Space Apps Challenge — Adapting Farms with NASA Data** (`Ganja / Azerbaijan`)*
 
 [![NASA Space Apps 2026](https://img.shields.io/badge/NASA%20Space%20Apps-2026%20Challenge-0B3D91?style=for-the-badge)](https://www.spaceappschallenge.org/2026/challenges/adapting-farms-with-nasa-data/)
+[![Live App](https://img.shields.io/badge/Live%20Deployment-Vercel-000000?style=for-the-badge&logo=vercel&logoColor=white)](https://space-farm-two.vercel.app)
 [![FastAPI Backend](https://img.shields.io/badge/FastAPI-28%20Endpoints-009688?style=for-the-badge&logo=fastapi&logoColor=white)](services/api/app/main.py)
 [![React + Three.js + Leaflet](https://img.shields.io/badge/React%2018-Three.js%20%2B%20Leaflet-61DAFB?style=for-the-badge&logo=react&logoColor=0B1020)](apps/web/package.json)
 [![District Coverage](https://img.shields.io/badge/Azerbaijan-67%20Districts-7C3AED?style=for-the-badge)](apps/web/src/data/azDistricts.ts)
@@ -183,6 +184,8 @@ cd apps/web && npm run build
 ---
 
 ## 7. Vercel Deployment
+
+Live production URL: **[`https://space-farm-two.vercel.app`](https://space-farm-two.vercel.app)**
 
 Space Farm ships with root [`vercel.json`](vercel.json), [`api/index.py`](api/index.py), and [`requirements.txt`](requirements.txt) configured for unified deployment on Vercel:
 - Static React/Vite bundle is built from `apps/web` into `apps/web/dist`.

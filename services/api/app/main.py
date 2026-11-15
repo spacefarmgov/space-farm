@@ -5,14 +5,16 @@ from __future__ import annotations
 import logging
 import uuid
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.config import CONTRACT_VERSION, ensure_runtime_dirs, get_settings
+from app.config import CONTRACT_VERSION, REPO_ROOT, ensure_runtime_dirs, get_settings
 from app.data_adapters.exceptions import DataQualityError, DataUnavailable, InvalidDataQuery
 from app.routes.api import router as v1_router
 from app.routes.orbital import router as orbital_router
@@ -174,7 +176,32 @@ def create_app() -> FastAPI:
     app.include_router(v1_router)
     app.include_router(orbital_router)
     app.include_router(workspace_router)
+    _mount_frontend_dist(app)
     return app
+
+
+def _mount_frontend_dist(app: FastAPI) -> None:
+    """Serve built Vite SPA assets and client routes when `apps/web/dist` exists."""
+    dist_dir = (REPO_ROOT / "apps" / "web" / "dist").resolve()
+    index_html = dist_dir / "index.html"
+    if not index_html.is_file():
+        return
+
+    for sub in ("assets", "earth-3d"):
+        sub_dir = dist_dir / sub
+        if sub_dir.is_dir():
+            app.mount(f"/{sub}", StaticFiles(directory=str(sub_dir)), name=f"spa-{sub}")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_spa(full_path: str):
+        clean_path = full_path.lstrip("/")
+        if clean_path == "api" or clean_path.startswith("api/"):
+            raise StarletteHTTPException(status_code=404, detail="Not Found")
+        if clean_path:
+            candidate = (dist_dir / clean_path).resolve()
+            if candidate.is_relative_to(dist_dir) and candidate.is_file():
+                return FileResponse(candidate)
+        return FileResponse(index_html)
 
 
 app = create_app()
