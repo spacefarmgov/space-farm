@@ -276,6 +276,36 @@ export function normalizeWeightsForRequest(weights: PriorityWeights): PriorityWe
   return { water: w, soil: s, income: i };
 }
 
+/**
+ * Largest-remainder integer rounding so displayed effective/requested weight percentages always total 100%.
+ */
+export function toNormalizedPercentages(weights: PriorityWeights): {
+  water: number;
+  soil: number;
+  income: number;
+} {
+  const rawSum = weights.water + weights.soil + weights.income;
+  if (!Number.isFinite(rawSum) || rawSum <= 0) {
+    return { water: 50, soil: 30, income: 20 };
+  }
+  const keys = ["water", "soil", "income"] as const;
+  const exact = keys.map((k) => Math.max(0, (weights[k] / rawSum) * 100));
+  const floored = exact.map((v) => Math.floor(v));
+  let remainder = 100 - floored.reduce((acc, v) => acc + v, 0);
+  const order = keys
+    .map((key, idx) => ({ idx, key, frac: exact[idx] - floored[idx] }))
+    .sort((a, b) => (b.frac !== a.frac ? b.frac - a.frac : a.idx - b.idx));
+  for (let i = 0; i < order.length && remainder > 0; i += 1) {
+    floored[order[i].idx] += 1;
+    remainder -= 1;
+  }
+  return {
+    water: floored[0],
+    soil: floored[1],
+    income: floored[2],
+  };
+}
+
 export function validateDraftForSimulation(
   draft: FieldDraft,
   weights: PriorityWeights,

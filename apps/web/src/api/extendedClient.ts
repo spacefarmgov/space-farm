@@ -323,6 +323,13 @@ export function loginAccount(payload: {
   });
 }
 
+export function demoLoginAccount(region?: string): Promise<AuthSessionResponse> {
+  return requestWorkspaceJson<AuthSessionResponse>("/api/v1/auth/demo", {
+    method: "POST",
+    body: JSON.stringify(region ? { region } : {}),
+  });
+}
+
 export function fetchUserProfile(token: string): Promise<ProfileBundleResponse> {
   return requestWorkspaceJson<ProfileBundleResponse>("/api/v1/profile", { method: "GET" }, token);
 }

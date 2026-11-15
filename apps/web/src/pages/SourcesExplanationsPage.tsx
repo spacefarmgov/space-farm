@@ -5,10 +5,12 @@ import { ProvenanceCards } from "../components/features/sources/ProvenanceCards"
 import { AppShell } from "../components/layout/AppShell";
 import { CropIcon, SimulationStatusBadge } from "../components/ui/StatusPrimitives";
 import { useSpaceFarm, type SourceDrawerSection } from "../context/SpaceFarmContext";
+import { formatCropName } from "../locales/translations";
 
 export function SourcesExplanationsPage() {
   const {
     t,
+    locale,
     draft,
     baselineSim,
     selectedPlan,
@@ -103,7 +105,7 @@ export function SourcesExplanationsPage() {
                     <CropIcon cropId={y.crop_id} size={17} />
                     <div>
                       <div style={{ fontSize: 11, color: "var(--text-muted)" }}>Y{y.year_index}</div>
-                      <div style={{ fontWeight: 600, fontSize: 14 }}>{y.crop_name}</div>
+                      <div style={{ fontWeight: 600, fontSize: 14 }}>{formatCropName(y.crop_id, y.crop_name, locale)}</div>
                     </div>
                   </div>
                 ))}
@@ -131,7 +133,9 @@ export function SourcesExplanationsPage() {
                 ) : (
                   <CheckCircle2 size={13} aria-hidden="true" />
                 )}
-                <span>{missingInputs.length}</span>
+                <span>
+                  {missingInputs.length} {t.sources.missingBadgeSuffix}
+                </span>
               </span>
             </div>
 

@@ -961,4 +961,39 @@ class WorkspaceApiTests(unittest.TestCase):
                         )
                         self.assertEqual(new_login.status_code, 200, new_login.text)
 
+    def test_demo_judge_access_creates_isolated_rehydratable_session(self) -> None:
+        with patch.dict(
+            os.environ,
+            {"SPACEFARM_AUTH_SECRET": "shared-vercel-test-secret-abcdef123456"},
+            clear=False,
+        ):
+            resp_a = self.client.post("/api/v1/auth/demo", json={})
+            self.assertEqual(resp_a.status_code, 201, resp_a.text)
+            body_a = resp_a.json()
+            self.assertTrue(body_a.get("token"))
+            self.assertEqual(body_a["user"]["name"], "NASA Judge Demo")
+            self.assertTrue(body_a["user"]["email"].endswith("@demo.spacefarm.org"))
+            self.assertGreaterEqual(len(body_a.get("parcels") or []), 1)
+            self.assertTrue((resp_a.cookies.get(VAULT_COOKIE_NAME) or "").startswith("sfv1."))
+
+            # Second invocation with no JSON body creates a separate isolated demo account
+            resp_b = self.client.post("/api/v1/auth/demo")
+            self.assertEqual(resp_b.status_code, 201, resp_b.text)
+            body_b = resp_b.json()
+            self.assertNotEqual(body_a["user"]["id"], body_b["user"]["id"])
+            self.assertNotEqual(body_a["user"]["email"], body_b["user"]["email"])
+
+            # Token survives across a cold serverless container via v2 claims rehydration
+            with tempfile.TemporaryDirectory() as cold_dir:
+                cold_store = SpaceFarmStore(Settings(data_dir=cold_dir))
+                cold_app = create_app()
+                cold_app.dependency_overrides[_get_store] = lambda: cold_store
+                with TestClient(cold_app) as cold_client:
+                    prof_resp = cold_client.get(
+                        "/api/v1/profile",
+                        headers={"Authorization": f"Bearer {body_a['token']}"},
+                    )
+                    self.assertEqual(prof_resp.status_code, 200, prof_resp.text)
+                    self.assertEqual(prof_resp.json()["user"]["email"], body_a["user"]["email"])
+
 

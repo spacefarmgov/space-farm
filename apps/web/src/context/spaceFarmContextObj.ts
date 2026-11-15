@@ -163,6 +163,7 @@ export interface SpaceFarmContextValue {
     region?: string,
   ) => Promise<AuthActionResult>;
   establishAuthSession: (session: AuthSessionResponse, toastMessage?: string) => void;
+  loginAsDemoJudge: (region?: string) => Promise<AuthActionResult>;
   logoutUser: () => void;
   triggerAuthAlert: (targetPath?: string) => void;
   theme: ThemeMode;

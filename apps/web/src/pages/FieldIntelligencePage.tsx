@@ -8,6 +8,7 @@ import { SatelliteFieldMap } from "../components/map/SatelliteFieldMap";
 import { useSpaceFarm } from "../context/SpaceFarmContext";
 import { VERIFIED_AZ_REGIONS } from "../data/regions";
 import { AZ_DISTRICTS } from "../data/azDistricts";
+import { formatCropName } from "../locales/translations";
 
 const FALLBACK_CROP_OPTIONS = [
   { crop_id: "wheat", name: "Wheat" },
@@ -596,7 +597,7 @@ export function FieldIntelligencePage() {
                     <option value="">{t.field.priorCropNone}</option>
                     {cropOptions.map((c) => (
                       <option key={c.crop_id} value={c.crop_id}>
-                        {c.name}
+                        {formatCropName(c.crop_id, c.name, locale)}
                       </option>
                     ))}
                   </select>

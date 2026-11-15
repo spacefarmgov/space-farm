@@ -13,6 +13,7 @@ import {
   activateFarmParcel,
   createFarmParcel,
   deleteFarmParcel,
+  demoLoginAccount,
   fetchAlertsOverview,
   fetchClimateFeaturesWithMode,
   fetchClimateTimeseriesWithMode,
@@ -1312,6 +1313,26 @@ export function SpaceFarmProvider({ children }: { children: ReactNode }) {
     });
   }, [notifications]);
 
+  const loginAsDemoJudge = useCallback(
+    async (region = "Ganja-Dashkasan"): Promise<AuthActionResult> => {
+      try {
+        const res = await demoLoginAccount(region);
+        applyAuthSession(res.token, res.user, res.parcels);
+        setAuthModalOpen(false);
+        setAuthAlertMessage(null);
+        showToast(TRANSLATIONS[locale].auth.demoWelcome);
+        return { ok: true };
+      } catch (err) {
+        return extractMutationError(
+          err,
+          TRANSLATIONS[locale].errors.apiUnreachableTitle,
+          TRANSLATIONS[locale].auth.invalidCredentials,
+        );
+      }
+    },
+    [applyAuthSession, locale, showToast],
+  );
+
   const value: SpaceFarmContextValue = {
     locale,
     setLocale,
@@ -1384,6 +1405,7 @@ export function SpaceFarmProvider({ children }: { children: ReactNode }) {
     loginUser,
     registerUser,
     establishAuthSession,
+    loginAsDemoJudge,
     logoutUser,
     triggerAuthAlert,
     theme,

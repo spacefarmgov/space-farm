@@ -389,7 +389,7 @@
   left: 20px;
   bottom: 20px;
   z-index: 20;
-  max-width: min(440px, calc(100vw - 420px));
+  max-width: min(440px, calc(100% - 452px));
   display: flex;
   flex-direction: column;
   gap: 7px;
@@ -1415,6 +1415,13 @@
   }
   .sf-cockpit-bar {
     top: 122px;
+  }
+  .sf-target-card,
+  .sf-target-card.is-compact {
+    width: 296px;
+  }
+  .sf-hud-filters {
+    max-width: min(440px, calc(100% - 352px));
   }
 }
 

@@ -71,6 +71,10 @@ export interface TranslationDictionary {
     emailExists: string;
     switchToRegister: string;
     switchToLogin: string;
+    demoWelcome: string;
+    demoJudgeBtn: string;
+    demoJudgeHint: string;
+    demoJudgeOr: string;
   };
   badges: {
     cachedData: string;
@@ -327,6 +331,7 @@ export interface TranslationDictionary {
       heat: string;
       heavy_rain: string;
     };
+    balancePrefix: string;
     severity: {
       critical: string;
       high: string;
@@ -666,9 +671,13 @@ export interface TranslationDictionary {
     contextMismatchWarning: string;
     accordionTitle: string;
     accChanged: string;
+    accChangedDesc: string;
     accUnchanged: string;
+    accUnchangedDesc: string;
     accRules: string;
+    accRulesDesc: string;
     accLimits: string;
+    accLimitsDesc: string;
     runPromptTitle: string;
     runPromptBody: string;
   };
@@ -679,6 +688,7 @@ export interface TranslationDictionary {
     noPlanSelected: string;
     unknownInputsTitle: string;
     noUnknownInputs: string;
+    missingBadgeSuffix: string;
     flowTitle: string;
     flowInputs: string;
     flowRules: string;
@@ -784,6 +794,10 @@ export const TRANSLATIONS: Record<Locale, TranslationDictionary> = {
       emailExists: "An account with this email already exists. Please use Login.",
       switchToRegister: "New farmer? Switch to Register",
       switchToLogin: "Already registered? Switch to Login",
+      demoWelcome: "Demo Judge session active — welcome to SpaceFarm Dashboard.",
+      demoJudgeBtn: "Quick Judge / Demo Access (1-Click)",
+      demoJudgeHint: "Instant isolated session with sample farm data — no registration or OTP required.",
+      demoJudgeOr: "or use email / Google below",
     },
     badges: {
       cachedData: "Cached data",
@@ -795,7 +809,7 @@ export const TRANSLATIONS: Record<Locale, TranslationDictionary> = {
       needsData: "Regional baseline",
       noFeasiblePlan: "No feasible plan",
       unknown: "Custom metric",
-      dataNeeded: "Market add-on",
+      dataNeeded: "Pending run",
       illustrativeData: "Verified baseline",
       sourceSupported: "Source-supported",
       expertReviewed: "Expert-reviewed",
@@ -901,7 +915,7 @@ export const TRANSLATIONS: Record<Locale, TranslationDictionary> = {
         {
           title: "Verified Laboratory Soil Chemistry",
           metric: "pH · Humus · N-P-K · EC",
-          desc: "Replaces guesswork with persistent per-parcel lab reports in SQLite so crop suitability rules respect real soil constraints.",
+          desc: "Replaces guesswork with saved per-parcel lab reports so crop suitability rules respect real soil constraints.",
         },
         {
           title: "Early Warning & AI Agronomist",
@@ -967,7 +981,7 @@ export const TRANSLATIONS: Record<Locale, TranslationDictionary> = {
           route: "/field",
           label: "Soil Lab",
           title: "Field & Laboratory Chemistry Profiles",
-          summary: "Keep structured Lab pH, humus %, NPK nutrients, electrical conductivity, irrigation supply, and crop history saved cleanly in SQLite.",
+          summary: "Keep structured Lab pH, humus %, NPK nutrients, electrical conductivity, irrigation supply, and crop history saved cleanly in your farm workspace.",
           bullets: [
             "Store real pH, Humus, Nitrogen, Phosphorus, Potassium, and EC values",
             "Update lab test dates and soil sample depths any time",
@@ -1067,7 +1081,7 @@ export const TRANSLATIONS: Record<Locale, TranslationDictionary> = {
     },
     profilePage: {
       title: "My Info & Farm Profile",
-      subtitle: "Manage your personal operator record, credentials, and linked farm parcels in SQLite storage.",
+      subtitle: "Manage your personal operator record, credentials, and linked farm parcels in your workspace.",
       requiredBannerTitle: "Complete and accurate operator information is required.",
       requiredBannerNote: "Keep your profile updated so field plans, telemetry exports, and AI advisories match your land.",
       openFieldBtn: "Field Workspace",
@@ -1158,6 +1172,7 @@ export const TRANSLATIONS: Record<Locale, TranslationDictionary> = {
         heat: "Extreme Heat",
         heavy_rain: "Heavy Rain / Flood",
       },
+      balancePrefix: "Balance",
       severity: {
         critical: "Critical",
         high: "High",
@@ -1524,9 +1539,13 @@ export const TRANSLATIONS: Record<Locale, TranslationDictionary> = {
       contextMismatchWarning: "Warning: Baseline and stress responses reference different dataset versions.",
       accordionTitle: "Scenario details",
       accChanged: "What changed",
+      accChangedDesc: "Scenario rainfall multiplier adjusted to {multiplier}× ({pct}%).",
       accUnchanged: "What stayed fixed",
+      accUnchangedDesc: "Field coordinates ({lat}, {lon}), soil inputs, irrigation mode, and priority weights remained locked.",
       accRules: "Rules & features evaluated",
+      accRulesDesc: "Seasonal water-band suitability (RULE_WATER_BAND) evaluated directly against scaled effective water supply.",
       accLimits: "Uncertainty & model boundaries",
+      accLimitsDesc: "Deterministic annual precipitation scaling only — not seasonal drought distribution timing or sub-daily evapotranspiration.",
       runPromptTitle: "Select a rainfall stress level and run comparison",
       runPromptBody: "Choose −10%, −20%, or −30% rainfall reduction, then click Run scenario.",
     },
@@ -1537,6 +1556,7 @@ export const TRANSLATIONS: Record<Locale, TranslationDictionary> = {
       noPlanSelected: "No plan calculated yet. Compare alternatives in Rotation Studio first.",
       unknownInputsTitle: "Soil & Lab Readiness",
       noUnknownInputs: "All Laboratory pH, Humus, NPK, irrigation, and prior crop details are verified and active.",
+      missingBadgeSuffix: "missing",
       flowTitle: "Decision provenance chain",
       flowInputs: "Inputs",
       flowRules: "Rules",
@@ -1566,7 +1586,7 @@ export const TRANSLATIONS: Record<Locale, TranslationDictionary> = {
       methodologyParagraphs: [
         "1. Climate & Soil-Water Telemetry: SpaceFarm retrieves daily agroclimatology parameters (T2M, T2M_MIN, T2M_MAX, PRECTOTCORR, plus GWETTOP surface wetness, GWETROOT root-zone wetness, and ALLSKY_SFC_SW_DWN solar irradiance in live mode) from NASA LaRC POWER (MERRA-2 0.5° × 0.625° grid) using UTC calendar bounds.",
         "2. Satellite Earth Observation Layers: Orbital Explorer overlays real NASA EOSDIS GIBS WMTS tiles for vegetation (MODIS Terra L3 NDVI 16-Day), root/surface moisture (SMAP L4 9 km), precipitation rate (GPM IMERG), and surface heat (MODIS Terra Daytime LST).",
-        "3. Soil Lab & pH Integration: Every registered parcel carries persisted SQLite baseline or laboratory measurements for pH, Humus (%), Nitrogen (N), Phosphorus (P2O5), Potassium (K2O), EC salinity, and moisture capacity, editable live inside Field Intelligence.",
+        "3. Soil Lab & pH Integration: Every registered parcel carries saved baseline or laboratory measurements for pH, Humus (%), Nitrogen (N), Phosphorus (P2O5), Potassium (K2O), EC salinity, and moisture capacity, editable live inside Field Intelligence.",
         "4. Deterministic Rotation Engine: Three-year rotations enforce consecutive crop and family separation rules, compute nitrogen-fixation, erosion cover, and climate-resilience indicators, and score Water and Soil fit ready for custom local AZN pricing.",
         "5. Climate Stress Modeling & Attribution: Scenario Lab scales period precipitation deterministically by 0.9×, 0.8×, or 0.7× while keeping farm inputs identical. Provided under NASA Earth Science open-data attribution rules without implying NASA endorsement.",
       ],
@@ -1646,6 +1666,10 @@ export const TRANSLATIONS: Record<Locale, TranslationDictionary> = {
       emailExists: "Bu e-poçt ilə hesab artıq mövcuddur. Daxil ol bölməsinə keçin.",
       switchToRegister: "Hesabınız yoxdur? Qeydiyyatdan keçin",
       switchToLogin: "Artıq hesabınız var? Daxil olun",
+      demoWelcome: "Demo Münsif sessiyası aktivdir — SpaceFarm Panelinə xoş gəlmisiniz.",
+      demoJudgeBtn: "Münsif / Demo Girişi (1 Kliklə Başla)",
+      demoJudgeHint: "Qeydiyyat və ya e-poçt OTP kodu olmadan nümunə sahə datası ilə dərhal giriş.",
+      demoJudgeOr: "və ya e-poçt / Google ilə davam edin",
     },
     badges: {
       cachedData: "Keşlənmiş məlumat",
@@ -1657,7 +1681,7 @@ export const TRANSLATIONS: Record<Locale, TranslationDictionary> = {
       needsData: "Regional baza",
       noFeasiblePlan: "Uyğun plan tapılmadı",
       unknown: "Fərdi ölçüm",
-      dataNeeded: "Bazar əlavəsi",
+      dataNeeded: "Hesablama gözləyir",
       illustrativeData: "Təsdiqlənmiş baza",
       sourceSupported: "Mənbə dəstəkli",
       expertReviewed: "Ekspert yoxlamalı",
@@ -1763,7 +1787,7 @@ export const TRANSLATIONS: Record<Locale, TranslationDictionary> = {
         {
           title: "Real Laboratoriya Torpaq Kimyası",
           metric: "pH · Humus · N-P-K · EC",
-          desc: "Hər sahə üzrə pH, humus və NPK laboratoriya göstəricilərini SQLite bazasında saxlayır və əkin uyğunluq mühərrikinə ötürür.",
+          desc: "Hər sahə üzrə pH, humus və NPK laboratoriya göstəricilərini şəxsi sahə yaddaşında saxlayır və əkin uyğunluq mühərrikinə ötürür.",
         },
         {
           title: "Erkən Risk & AI Aqronom",
@@ -1929,7 +1953,7 @@ export const TRANSLATIONS: Record<Locale, TranslationDictionary> = {
     },
     profilePage: {
       title: "Məlumatlarım və Təsərrüfat Profili",
-      subtitle: "Şəxsi hesab məlumatlarınızı, əlaqə vasitələrinizi və SQLite bazasındakı əkin sahələrinizi idarə edin.",
+      subtitle: "Şəxsi hesab məlumatlarınızı, əlaqə vasitələrinizi və hesabınızdakı əkin sahələrinizi idarə edin.",
       requiredBannerTitle: "Bütün məlumatların tam və düzgün doldurulması mütləqdir.",
       requiredBannerNote: "Profilinizi tamamlamaq peyk analitikası, sahə planlaması və AI tövsiyələrinin dəqiqliyini artırır.",
       openFieldBtn: "Sahə modulu",
@@ -2020,6 +2044,7 @@ export const TRANSLATIONS: Record<Locale, TranslationDictionary> = {
         heat: "Həddindən Artıq İstilik",
         heavy_rain: "Güclü Yağıntı / Sel",
       },
+      balancePrefix: "Balans",
       severity: {
         critical: "Kritik",
         high: "Yüksək",
@@ -2386,9 +2411,13 @@ export const TRANSLATIONS: Record<Locale, TranslationDictionary> = {
       contextMismatchWarning: "Xəbərdarlıq: Baza və stress nəticələri fərqli dataset versiyalarına istinad edir.",
       accordionTitle: "Ssenari detalları",
       accChanged: "Hansı parametr dəyişdi?",
+      accChangedDesc: "Ssenari yağıntı əmsalı {multiplier}× ({pct}%) olaraq tənzimləndi.",
       accUnchanged: "Hansı girişlər sabit qaldı?",
+      accUnchangedDesc: "Sahə koordinatları ({lat}, {lon}), torpaq göstəriciləri, suvarma rejimi və prioritet çəkilər sabit saxlanıldı.",
       accRules: "Hansı qayda və göstərici təsir etdi?",
+      accRulesDesc: "Mövsümi su zolağı uyğunluğu (RULE_WATER_BAND) azaldılmış effektiv su təminatına qarşı birbaşa qiymətləndirildi.",
       accLimits: "Məhdudiyyətlər və qeyri-müəyyənlik",
+      accLimitsDesc: "Yalnız deterministik illik yağıntı miqyasıdır — mövsümi quraqlıq paylanmasını və ya gündəlik buxarlanmanı proqnozlaşdırmır.",
       runPromptTitle: "Yağıntı azalma səviyyəsini seçin və hesablayın",
       runPromptBody: "−10%, −20% və ya −30% yağıntı azalmasını seçib Ssenarini hesabla düyməsini sıxın.",
     },
@@ -2399,6 +2428,7 @@ export const TRANSLATIONS: Record<Locale, TranslationDictionary> = {
       noPlanSelected: "Hələ seçilmiş plan yoxdur. Əvvəlcə Əkin planları səhifəsində hesablayın.",
       unknownInputsTitle: "Torpaq & Lab Hazırlıq Statusu",
       noUnknownInputs: "Sahənin bütün Lab pH, Humus, NPK, suvarma və əvvəlki əkin məlumatları təsdiqlənib və aktivdir.",
+      missingBadgeSuffix: "çatışmayan",
       flowTitle: "Qərar mənşə zənciri",
       flowInputs: "Girişlər",
       flowRules: "Qaydalar",
@@ -2428,7 +2458,7 @@ export const TRANSLATIONS: Record<Locale, TranslationDictionary> = {
       methodologyParagraphs: [
         "1. İqlim və Torpaq-Su Telemetriyası: SpaceFarm UTC təqvim sərhədləri ilə NASA LaRC POWER (MERRA-2 0.5° × 0.625°) gündəlik aqro-iqlim parametrlərini (T2M, T2M_MIN, T2M_MAX, PRECTOTCORR, canlı rejimdə isə əlavə GWETTOP, GWETROOT torpaq nəmliyi və ALLSKY_SFC_SW_DWN günəş radiasiyası) əldə edir.",
         "2. Peyk Yer Müşahidə Qatları: Orbital Explorer xəritəsində bitki örtüyü (MODIS Terra NDVI 16-Day), torpaq nəmliyi (SMAP L4 9 km), yağıntı intensivliyi (GPM IMERG) və səth temperaturu (MODIS Daytime LST) üzrə real NASA EOSDIS GIBS WMTS qatları göstərilir.",
-        "3. Torpaq Lab & pH İnteqrasiyası: Hər qeydiyyatlı sahə profili pH, Humus (%), Azot (N), Fosfor (P2O5), Kalium (K2O), elektrik keçiriciliyi (EC) və nəmlik tutumu üzrə baza və ya laboratoriya göstəriciləri ilə SQLite bazasında saxlanılır və istifadəçi tərəfindən real lab nəticəsi ilə yenilənə bilər.",
+        "3. Torpaq Lab & pH İnteqrasiyası: Hər qeydiyyatlı sahə profili pH, Humus (%), Azot (N), Fosfor (P2O5), Kalium (K2O), elektrik keçiriciliyi (EC) və nəmlik tutumu üzrə baza və ya laboratoriya göstəriciləri ilə təhlükəsiz hesab bazasında saxlanılır və istifadəçi tərəfindən real lab nəticəsi ilə yenilənə bilər.",
         "4. Deterministik Dövriyyə Mühərriki: Üçillik planlar ardıcıl eyni bitki/fəsilə məhdudiyyətini, azot fiksasiyası, eroziya qoruması və iqlim davamlılığını hesablayır; Gəlir göstəricisi yerli bazar qiymətləri əlavə olunduqda fərdiləşdirilir.",
         "5. Quraqlıq Stress Modelləşdirməsi və Atribusiya: Ssenari laboratoriyası digər bütün sahə göstəricilərini sabit saxlayaraq yağıntını 0.9×, 0.8× və ya 0.7× əmsalı ilə deterministik hesablayır. Məlumatlar rəsmi NASA təsdiqi iddiası olmadan NASA açıq məlumat atribusiyası altında təqdim olunur.",
       ],
@@ -2501,4 +2531,22 @@ export function getValidationStatusLabel(
     case "provisional":
       return t.badges.provisional;
   }
+}
+
+const CROP_NAME_MAP: Record<string, Record<Locale, string>> = {
+  wheat: { en: "Wheat", az: "Buğda" },
+  barley: { en: "Barley", az: "Arpa" },
+  chickpea: { en: "Chickpea", az: "Noxud" },
+  lentil: { en: "Lentil", az: "Mərci" },
+  sunflower: { en: "Sunflower", az: "Günəbaxan" },
+  maize: { en: "Maize", az: "Qarğıdalı" },
+};
+
+export function formatCropName(
+  cropId: string | null | undefined,
+  fallback: string,
+  locale: Locale,
+): string {
+  const key = (cropId ?? "").trim().toLowerCase();
+  return CROP_NAME_MAP[key]?.[locale] ?? (fallback || cropId || "—");
 }

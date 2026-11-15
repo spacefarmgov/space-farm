@@ -294,7 +294,7 @@ export function RiskAlertsPage() {
             <h3>{ap.hazards.drought}</h3>
             <strong className="mono">
               {minBalance.length > 0
-                ? `${Math.min(...minBalance) > 0 ? "+" : ""}${formatLocaleNumber(Math.min(...minBalance), locale, 1)} mm`
+                ? `${ap.balancePrefix} ${Math.min(...minBalance) > 0 ? "+" : ""}${formatLocaleNumber(Math.min(...minBalance), locale, 1)} mm`
                 : "—"}
             </strong>
           </div>

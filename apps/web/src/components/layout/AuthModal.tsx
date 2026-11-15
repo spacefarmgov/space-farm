@@ -17,6 +17,7 @@ export function AuthModal() {
     closeAuthModal,
     loginUser,
     registerUser,
+    loginAsDemoJudge,
   } = useSpaceFarm();
   const navigate = useNavigate();
 
@@ -65,6 +66,23 @@ export function AuthModal() {
       return;
     }
 
+    const destination =
+      pendingRedirectPath && pendingRedirectPath !== "/"
+        ? pendingRedirectPath
+        : "/explore";
+    navigate(destination, { replace: true });
+  }
+
+  async function handleDemoJudge() {
+    if (submitting) return;
+    setFormError(null);
+    setSubmitting(true);
+    const result = await loginAsDemoJudge(region);
+    setSubmitting(false);
+    if (!result.ok) {
+      setFormError(result.error ?? t.auth.invalidCredentials);
+      return;
+    }
     const destination =
       pendingRedirectPath && pendingRedirectPath !== "/"
         ? pendingRedirectPath
@@ -145,6 +163,22 @@ export function AuthModal() {
             <UserPlus size={15} aria-hidden="true" />
             <span>{t.auth.tabRegister}</span>
           </button>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
+          <button
+            type="button"
+            className="sf-btn sf-btn-primary"
+            disabled={submitting}
+            onClick={() => void handleDemoJudge()}
+            style={{ width: "100%", justifyContent: "center" }}
+          >
+            <LogIn size={15} aria-hidden="true" />
+            <span>{t.auth.demoJudgeBtn}</span>
+          </button>
+          <span style={{ fontSize: 11.5, color: "var(--text-muted)", textAlign: "center" }}>
+            {t.auth.demoJudgeHint} — {t.auth.demoJudgeOr}
+          </span>
         </div>
 
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 14 }} noValidate>

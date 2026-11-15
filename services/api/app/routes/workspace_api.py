@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import logging
+import secrets
 from datetime import date
 from typing import Any, Literal
 
 import httpx
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
+from fastapi import APIRouter, Body, Depends, Header, HTTPException, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.config import get_settings
@@ -127,6 +128,10 @@ class RegisterPayload(_StrictBody):
         if "@" not in clean or "." not in clean.split("@")[-1]:
             raise ValueError("Please provide a valid email address.")
         return clean
+
+
+class DemoLoginPayload(_StrictBody):
+    region: str = Field(default="Ganja-Dashkasan", min_length=1, max_length=120)
 
 
 class LoginPayload(_StrictBody):
@@ -468,6 +473,27 @@ def register_account(
         email=payload.email,
         password=payload.password,
         region=payload.region,
+    )
+    _set_vault_cookie(request, response, store, str(user["id"]))
+    return {"token": token, "user": user, "parcels": parcels}
+
+
+@router.post("/auth/demo", status_code=status.HTTP_201_CREATED)
+def demo_judge_access(
+    request: Request,
+    response: Response,
+    payload: DemoLoginPayload | None = Body(default=None),
+    store: SpaceFarmStore = Depends(_get_store),
+) -> dict[str, Any]:
+    """Provision an isolated one-click Judge / Demo workspace session without SMTP friction."""
+    region = payload.region.strip() if payload and payload.region.strip() else "Ganja-Dashkasan"
+    demo_email = f"judge-{secrets.token_hex(4)}@demo.spacefarm.org"
+    demo_password = secrets.token_urlsafe(24)
+    token, user, parcels = store.register_user(
+        name="NASA Judge Demo",
+        email=demo_email,
+        password=demo_password,
+        region=region,
     )
     _set_vault_cookie(request, response, store, str(user["id"]))
     return {"token": token, "user": user, "parcels": parcels}
