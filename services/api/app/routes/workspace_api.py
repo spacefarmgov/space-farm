@@ -7,7 +7,7 @@ from datetime import date
 from typing import Any, Literal
 
 import httpx
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.config import get_settings
@@ -40,7 +40,7 @@ from app.schemas.models import (
     SimulationRequest,
     SoilInput,
 )
-from app.storage.sqlite_store import SpaceFarmStore
+from app.storage.sqlite_store import SpaceFarmStore, VAULT_COOKIE_NAME
 
 logger = logging.getLogger("space_farm.workspace_api")
 
@@ -51,7 +51,35 @@ def _get_store() -> SpaceFarmStore:
     return SpaceFarmStore(get_settings())
 
 
+def _set_vault_cookie(
+    request: Request,
+    response: Response,
+    store: SpaceFarmStore,
+    user_id: str,
+) -> None:
+    existing = request.cookies.get(VAULT_COOKIE_NAME)
+    token = store.export_vault_cookie(user_id, existing_cookie=existing)
+    if not token:
+        return
+    settings = get_settings()
+    is_https = (
+        settings.is_vercel
+        or request.url.scheme == "https"
+        or request.headers.get("x-forwarded-proto", "").lower() == "https"
+    )
+    response.set_cookie(
+        key=VAULT_COOKIE_NAME,
+        value=token,
+        max_age=86400 * 30,
+        path="/",
+        httponly=True,
+        samesite="lax",
+        secure=is_https,
+    )
+
+
 def _require_user_id(
+    request: Request,
     authorization: str | None = Header(default=None),
     store: SpaceFarmStore = Depends(_get_store),
 ) -> str:
@@ -66,6 +94,12 @@ def _require_user_id(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired session token.",
+        )
+    vault_cookie = request.cookies.get(VAULT_COOKIE_NAME)
+    if vault_cookie:
+        store.restore_from_vault_cookie(
+            vault_cookie,
+            target_email=str(claims.get("email") or "").strip() or None,
         )
     user_id = store.ensure_session_user(claims)
     if not user_id:
@@ -120,6 +154,7 @@ class ForgotPasswordPayload(_StrictBody):
 class OtpVerifyPayload(_StrictBody):
     email: str = Field(min_length=5, max_length=180)
     code: str = Field(min_length=4, max_length=4)
+    otp_token: str | None = Field(default=None, max_length=2048)
 
     @field_validator("email")
     @classmethod
@@ -142,6 +177,7 @@ class ResetPasswordPayload(_StrictBody):
     email: str = Field(min_length=5, max_length=180)
     code: str = Field(min_length=6, max_length=6)
     new_password: str = Field(min_length=6, max_length=128)
+    reset_token: str | None = Field(default=None, max_length=2048)
 
     @field_validator("email")
     @classmethod
@@ -415,8 +451,13 @@ def get_auth_providers() -> dict[str, Any]:
 @router.post("/auth/register", status_code=status.HTTP_201_CREATED)
 def register_account(
     payload: RegisterPayload,
+    request: Request,
+    response: Response,
     store: SpaceFarmStore = Depends(_get_store),
 ) -> dict[str, Any]:
+    vault_cookie = request.cookies.get(VAULT_COOKIE_NAME)
+    if vault_cookie:
+        store.restore_from_vault_cookie(vault_cookie, target_email=payload.email)
     if store.email_exists(payload.email):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -428,14 +469,19 @@ def register_account(
         password=payload.password,
         region=payload.region,
     )
+    _set_vault_cookie(request, response, store, str(user["id"]))
     return {"token": token, "user": user, "parcels": parcels}
 
 
 @router.post("/auth/register/request-otp")
 async def request_registration_otp(
     payload: RegisterPayload,
+    request: Request,
     store: SpaceFarmStore = Depends(_get_store),
 ) -> dict[str, Any]:
+    vault_cookie = request.cookies.get(VAULT_COOKIE_NAME)
+    if vault_cookie:
+        store.restore_from_vault_cookie(vault_cookie, target_email=payload.email)
     if store.email_exists(payload.email):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -447,7 +493,7 @@ async def request_registration_otp(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Email OTP delivery is not configured yet (set SMTP_HOST, SMTP_USER, SMTP_PASSWORD in .env).",
         )
-    otp_code = store.create_registration_otp(
+    otp_code, otp_token = store.create_registration_otp_bundle(
         name=payload.name,
         email=payload.email,
         password=payload.password,
@@ -465,26 +511,36 @@ async def request_registration_otp(
         "email": payload.email,
         "expires_in_seconds": settings.otp_ttl_seconds,
         "delivery_status": "sent",
+        "otp_token": otp_token,
     }
 
 
 @router.post("/auth/register/verify-otp", status_code=status.HTTP_201_CREATED)
 def verify_registration_otp(
     payload: OtpVerifyPayload,
+    request: Request,
+    response: Response,
     store: SpaceFarmStore = Depends(_get_store),
 ) -> dict[str, Any]:
+    vault_cookie = request.cookies.get(VAULT_COOKIE_NAME)
+    if vault_cookie:
+        store.restore_from_vault_cookie(vault_cookie, target_email=payload.email)
     outcome, token, user, parcels = store.verify_registration_otp(
         email=payload.email,
         code=payload.code,
+        otp_token=payload.otp_token,
     )
     if outcome != "ok" or token is None or user is None:
         raise _map_code_verification_error(outcome)
+    _set_vault_cookie(request, response, store, str(user["id"]))
     return {"token": token, "user": user, "parcels": parcels}
 
 
 @router.post("/auth/google")
 async def google_login(
     payload: GoogleAuthPayload,
+    request: Request,
+    response: Response,
     store: SpaceFarmStore = Depends(_get_store),
 ) -> dict[str, Any]:
     settings = get_settings()
@@ -499,6 +555,9 @@ async def google_login(
         access_token=payload.access_token,
         expected_client_id=client_id,
     )
+    vault_cookie = request.cookies.get(VAULT_COOKIE_NAME)
+    if vault_cookie:
+        store.restore_from_vault_cookie(vault_cookie, target_email=identity["email"])
     token, user, parcels = store.authenticate_or_register_google(
         google_sub=identity["sub"],
         email=identity["email"],
@@ -506,14 +565,20 @@ async def google_login(
         region=payload.region,
         avatar_url=identity["picture"],
     )
+    _set_vault_cookie(request, response, store, str(user["id"]))
     return {"token": token, "user": user, "parcels": parcels}
 
 
 @router.post("/auth/login")
 def login_account(
     payload: LoginPayload,
+    request: Request,
+    response: Response,
     store: SpaceFarmStore = Depends(_get_store),
 ) -> dict[str, Any]:
+    vault_cookie = request.cookies.get(VAULT_COOKIE_NAME)
+    if vault_cookie:
+        store.restore_from_vault_cookie(vault_cookie, target_email=payload.email)
     res = store.authenticate_user(payload.email, payload.password)
     if res is None:
         raise HTTPException(
@@ -521,14 +586,19 @@ def login_account(
             detail="Invalid email or password.",
         )
     token, user, parcels = res
+    _set_vault_cookie(request, response, store, str(user["id"]))
     return {"token": token, "user": user, "parcels": parcels}
 
 
 @router.post("/auth/forgot-password")
 async def request_password_reset(
     payload: ForgotPasswordPayload,
+    request: Request,
     store: SpaceFarmStore = Depends(_get_store),
 ) -> dict[str, Any]:
+    vault_cookie = request.cookies.get(VAULT_COOKIE_NAME)
+    if vault_cookie:
+        store.restore_from_vault_cookie(vault_cookie, target_email=payload.email)
     settings = get_settings()
     reset_code_rec = store.create_password_reset_code(payload.email, ttl_seconds=900)
     smtp_ready = is_smtp_configured(settings)
@@ -557,21 +627,35 @@ async def request_password_reset(
         "delivery_status": delivery_status,
         "smtp_configured": smtp_ready,
         "code_dispatched": smtp_ready and delivery_status == "sent",
+        "reset_token": (
+            str(reset_code_rec.get("reset_token") or "")
+            if (reset_code_rec is not None and smtp_ready and delivery_status == "sent")
+            else ""
+        ),
     }
 
 
 @router.post("/auth/reset-password")
 def reset_password_with_code(
     payload: ResetPasswordPayload,
+    request: Request,
+    response: Response,
     store: SpaceFarmStore = Depends(_get_store),
 ) -> dict[str, Any]:
+    vault_cookie = request.cookies.get(VAULT_COOKIE_NAME)
+    if vault_cookie:
+        store.restore_from_vault_cookie(vault_cookie, target_email=payload.email)
     outcome = store.verify_and_reset_password(
         email=payload.email,
         code=payload.code,
         new_password=payload.new_password,
+        reset_token=payload.reset_token,
     )
     if outcome != "ok":
         raise _map_code_verification_error(outcome)
+    uid = store.get_user_id_by_email(payload.email)
+    if uid:
+        _set_vault_cookie(request, response, store, uid)
     return {"ok": True}
 
 
@@ -589,6 +673,8 @@ def get_profile(
 @router.put("/profile")
 def update_profile(
     payload: ProfilePatchPayload,
+    request: Request,
+    response: Response,
     user_id: str = Depends(_require_user_id),
     store: SpaceFarmStore = Depends(_get_store),
 ) -> dict[str, Any]:
@@ -603,16 +689,20 @@ def update_profile(
     user, parcels = store.update_user_profile(user_id, patch)
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+    _set_vault_cookie(request, response, store, user_id)
     return {"user": user, "parcels": parcels}
 
 
 @router.post("/parcels", status_code=status.HTTP_201_CREATED)
 def create_parcel(
     payload: ParcelCreatePayload,
+    request: Request,
+    response: Response,
     user_id: str = Depends(_require_user_id),
     store: SpaceFarmStore = Depends(_get_store),
 ) -> dict[str, Any]:
     parcels = store.create_parcel(user_id, payload.model_dump())
+    _set_vault_cookie(request, response, store, user_id)
     return {"parcels": parcels}
 
 
@@ -620,26 +710,34 @@ def create_parcel(
 def update_parcel_details(
     parcel_id: str,
     payload: ParcelUpdatePayload,
+    request: Request,
+    response: Response,
     user_id: str = Depends(_require_user_id),
     store: SpaceFarmStore = Depends(_get_store),
 ) -> dict[str, Any]:
     parcels = store.update_parcel(user_id, parcel_id, payload.model_dump(exclude_unset=True))
+    _set_vault_cookie(request, response, store, user_id)
     return {"parcels": parcels}
 
 
 @router.post("/parcels/{parcel_id}/activate")
 def activate_parcel(
     parcel_id: str,
+    request: Request,
+    response: Response,
     user_id: str = Depends(_require_user_id),
     store: SpaceFarmStore = Depends(_get_store),
 ) -> dict[str, Any]:
     parcels = store.set_primary_parcel(user_id, parcel_id)
+    _set_vault_cookie(request, response, store, user_id)
     return {"parcels": parcels}
 
 
 @router.delete("/parcels/{parcel_id}")
 def remove_parcel(
     parcel_id: str,
+    request: Request,
+    response: Response,
     user_id: str = Depends(_require_user_id),
     store: SpaceFarmStore = Depends(_get_store),
 ) -> dict[str, Any]:
@@ -652,6 +750,7 @@ def remove_parcel(
     parcels = store.delete_parcel(user_id, parcel_id)
     if parcels and not any(p["is_primary"] for p in parcels):
         parcels = store.set_primary_parcel(user_id, str(parcels[0]["id"]))
+    _set_vault_cookie(request, response, store, user_id)
     return {"parcels": parcels}
 
 

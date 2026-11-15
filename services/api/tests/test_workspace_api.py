@@ -18,7 +18,7 @@ if str(API_DIR) not in sys.path:
 from app.config import Settings, get_settings  # noqa: E402
 from app.main import create_app  # noqa: E402
 from app.routes.workspace_api import _get_store  # noqa: E402
-from app.storage.sqlite_store import SpaceFarmStore  # noqa: E402
+from app.storage.sqlite_store import SpaceFarmStore, VAULT_COOKIE_NAME  # noqa: E402
 
 
 class WorkspaceApiTests(unittest.TestCase):
@@ -784,5 +784,181 @@ class WorkspaceApiTests(unittest.TestCase):
 
                     alerts = cold_client.get("/api/v1/alerts/overview", headers=headers)
                     self.assertEqual(alerts.status_code, 200, alerts.text)
+
+    def test_vault_cookie_enables_cross_container_login_wrong_password_and_profile_sync(self) -> None:
+        with patch.dict(
+            os.environ,
+            {"SPACEFARM_AUTH_SECRET": "shared-vercel-test-secret-abcdef123456"},
+            clear=False,
+        ):
+            reg = self.client.post(
+                "/api/v1/auth/register",
+                json={
+                    "name": "Leyla Aliyeva",
+                    "email": "leyla@farmer.az",
+                    "password": "mySecretPassword99",
+                    "region": "Bərdə",
+                },
+            )
+            self.assertEqual(reg.status_code, 201, reg.text)
+            vault_cookie = reg.cookies.get(VAULT_COOKIE_NAME)
+            self.assertTrue(vault_cookie and vault_cookie.startswith("sfv1."))
+            user_id = reg.json()["user"]["id"]
+            parcel_id = reg.json()["parcels"][0]["id"]
+            token_a = reg.json()["token"]
+
+            # Cold container B has no pre-existing SQLite record for leyla@farmer.az
+            with tempfile.TemporaryDirectory() as cold_dir_b:
+                cold_store_b = SpaceFarmStore(Settings(data_dir=cold_dir_b))
+                self.assertFalse(cold_store_b.email_exists("leyla@farmer.az"))
+                self.assertFalse(cold_store_b.restore_from_vault_cookie("sfv1.tampered.deadbeef"))
+
+                cold_app_b = create_app()
+                cold_app_b.dependency_overrides[_get_store] = lambda: cold_store_b
+                with TestClient(cold_app_b) as client_b:
+                    # Without vault cookie, login must fail 401
+                    no_cookie_login = client_b.post(
+                        "/api/v1/auth/login",
+                        json={"email": "leyla@farmer.az", "password": "mySecretPassword99"},
+                    )
+                    self.assertEqual(no_cookie_login.status_code, 401)
+
+                    client_b.cookies.set(VAULT_COOKIE_NAME, vault_cookie)
+                    # Wrong password with valid vault cookie must still fail 401
+                    bad_pw_login = client_b.post(
+                        "/api/v1/auth/login",
+                        json={"email": "leyla@farmer.az", "password": "wrongPassword123"},
+                    )
+                    self.assertEqual(bad_pw_login.status_code, 401)
+
+                    # Duplicate register with vault cookie returns 409 conflict
+                    dup_reg = client_b.post(
+                        "/api/v1/auth/register",
+                        json={
+                            "name": "Leyla Aliyeva",
+                            "email": "leyla@farmer.az",
+                            "password": "mySecretPassword99",
+                            "region": "Bərdə",
+                        },
+                    )
+                    self.assertEqual(dup_reg.status_code, 409)
+
+                    # Valid login across cold container succeeds and returns same user + parcel
+                    ok_login = client_b.post(
+                        "/api/v1/auth/login",
+                        json={"email": "leyla@farmer.az", "password": "mySecretPassword99"},
+                    )
+                    self.assertEqual(ok_login.status_code, 200, ok_login.text)
+                    login_body = ok_login.json()
+                    self.assertEqual(login_body["user"]["id"], user_id)
+                    self.assertEqual(login_body["parcels"][0]["id"], parcel_id)
+
+            # Mutate soil_ph on Container A -> updated vault cookie carries soil_ph=7.4 to Container C
+            upd = self.client.put(
+                f"/api/v1/parcels/{parcel_id}",
+                headers={"Authorization": f"Bearer {token_a}"},
+                json={"soil_ph": 7.4},
+            )
+            self.assertEqual(upd.status_code, 200, upd.text)
+            updated_cookie = upd.cookies.get(VAULT_COOKIE_NAME)
+            self.assertTrue(updated_cookie and updated_cookie.startswith("sfv1."))
+
+            with tempfile.TemporaryDirectory() as cold_dir_c:
+                cold_store_c = SpaceFarmStore(Settings(data_dir=cold_dir_c))
+                cold_app_c = create_app()
+                cold_app_c.dependency_overrides[_get_store] = lambda: cold_store_c
+                with TestClient(cold_app_c) as client_c:
+                    client_c.cookies.set(VAULT_COOKIE_NAME, updated_cookie)
+                    login_c = client_c.post(
+                        "/api/v1/auth/login",
+                        json={"email": "leyla@farmer.az", "password": "mySecretPassword99"},
+                    )
+                    self.assertEqual(login_c.status_code, 200, login_c.text)
+                    self.assertAlmostEqual(login_c.json()["parcels"][0]["soil_ph"], 7.4)
+
+    def test_otp_token_and_reset_token_work_across_cold_containers(self) -> None:
+        with patch.dict(
+            os.environ,
+            {"SPACEFARM_AUTH_SECRET": "shared-vercel-test-secret-abcdef123456"},
+            clear=False,
+        ):
+            otp_code, otp_token = self.store.create_registration_otp_bundle(
+                name="Murad Hasanov",
+                email="murad@farmer.az",
+                password="InitialPass123",
+                region="Quba",
+            )
+
+            # Cold Container B verifies 4-digit OTP using signed otp_token
+            with tempfile.TemporaryDirectory() as cold_dir_b:
+                cold_store_b = SpaceFarmStore(Settings(data_dir=cold_dir_b))
+                cold_app_b = create_app()
+                cold_app_b.dependency_overrides[_get_store] = lambda: cold_store_b
+                with TestClient(cold_app_b) as client_b:
+                    wrong_otp = client_b.post(
+                        "/api/v1/auth/register/verify-otp",
+                        json={
+                            "email": "murad@farmer.az",
+                            "code": "0000" if otp_code != "0000" else "9999",
+                            "otp_token": otp_token,
+                        },
+                    )
+                    self.assertEqual(wrong_otp.status_code, 400)
+
+                    good_otp = client_b.post(
+                        "/api/v1/auth/register/verify-otp",
+                        json={
+                            "email": "murad@farmer.az",
+                            "code": otp_code,
+                            "otp_token": otp_token,
+                        },
+                    )
+                    self.assertEqual(good_otp.status_code, 201, good_otp.text)
+                    vault_cookie = good_otp.cookies.get(VAULT_COOKIE_NAME)
+                    self.assertTrue(vault_cookie and vault_cookie.startswith("sfv1."))
+
+            # Generate reset code on Container B using vault cookie, reset on Container C, verify login on Container D
+            with tempfile.TemporaryDirectory() as cold_dir_b2:
+                cold_store_b2 = SpaceFarmStore(Settings(data_dir=cold_dir_b2))
+                cold_store_b2.restore_from_vault_cookie(vault_cookie, target_email="murad@farmer.az")
+                reset_info = cold_store_b2.create_password_reset_code("murad@farmer.az")
+                self.assertIsNotNone(reset_info)
+                assert reset_info is not None
+
+                with tempfile.TemporaryDirectory() as cold_dir_c:
+                    cold_store_c = SpaceFarmStore(Settings(data_dir=cold_dir_c))
+                    cold_app_c = create_app()
+                    cold_app_c.dependency_overrides[_get_store] = lambda: cold_store_c
+                    with TestClient(cold_app_c) as client_c:
+                        client_c.cookies.set(VAULT_COOKIE_NAME, vault_cookie)
+                        reset_resp = client_c.post(
+                            "/api/v1/auth/reset-password",
+                            json={
+                                "email": "murad@farmer.az",
+                                "code": reset_info["code"],
+                                "new_password": "UpdatedNewPass456",
+                                "reset_token": reset_info["reset_token"],
+                            },
+                        )
+                        self.assertEqual(reset_resp.status_code, 200, reset_resp.text)
+                        new_vault_cookie = reset_resp.cookies.get(VAULT_COOKIE_NAME)
+                        self.assertTrue(new_vault_cookie and new_vault_cookie.startswith("sfv1."))
+
+                with tempfile.TemporaryDirectory() as cold_dir_d:
+                    cold_store_d = SpaceFarmStore(Settings(data_dir=cold_dir_d))
+                    cold_app_d = create_app()
+                    cold_app_d.dependency_overrides[_get_store] = lambda: cold_store_d
+                    with TestClient(cold_app_d) as client_d:
+                        client_d.cookies.set(VAULT_COOKIE_NAME, new_vault_cookie)
+                        old_login = client_d.post(
+                            "/api/v1/auth/login",
+                            json={"email": "murad@farmer.az", "password": "InitialPass123"},
+                        )
+                        self.assertEqual(old_login.status_code, 401)
+                        new_login = client_d.post(
+                            "/api/v1/auth/login",
+                            json={"email": "murad@farmer.az", "password": "UpdatedNewPass456"},
+                        )
+                        self.assertEqual(new_login.status_code, 200, new_login.text)
 
 

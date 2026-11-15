@@ -19,6 +19,8 @@ import {
   fetchExtendedCrops,
   fetchHealthSafe,
   fetchUserProfile,
+  getFriendlyErrorMessage,
+  isNetworkFailure,
   loginAccount,
   registerAccount,
   runSimulationWithMode,
@@ -195,6 +197,14 @@ function climateKey(draft: FieldDraft): string {
 }
 
 function mapApiError(err: unknown, t: TranslationDictionary): ApiUiError {
+  if (isNetworkFailure(err)) {
+    return {
+      kind: "network",
+      message: t.errors.apiUnreachableBody,
+      fieldErrors: {},
+      retryable: true,
+    };
+  }
   if (err instanceof SpaceFarmApiError) {
     const details = err.envelope?.error.details ?? [];
     const fieldErrors: Record<string, string> = {};
@@ -239,11 +249,15 @@ function mapApiError(err: unknown, t: TranslationDictionary): ApiUiError {
   };
 }
 
-function extractMutationError(err: unknown, fallback: string): { ok: false; error?: string } {
+function extractMutationError(
+  err: unknown,
+  networkMsg: string,
+  fallback: string,
+): { ok: false; error?: string } {
   if (err instanceof SpaceFarmApiError && err.status === 401) {
     return { ok: false };
   }
-  return { ok: false, error: err instanceof Error ? err.message : fallback };
+  return { ok: false, error: getFriendlyErrorMessage(err, networkMsg, fallback) };
 }
 
 export function SpaceFarmProvider({ children }: { children: ReactNode }) {
@@ -555,7 +569,11 @@ export function SpaceFarmProvider({ children }: { children: ReactNode }) {
         }
         return {
           ok: false,
-          error: err instanceof Error ? err.message : dict.invalidCredentials,
+          error: getFriendlyErrorMessage(
+            err,
+            TRANSLATIONS[locale].errors.apiUnreachableTitle,
+            dict.invalidCredentials,
+          ),
         };
       }
     },
@@ -601,10 +619,11 @@ export function SpaceFarmProvider({ children }: { children: ReactNode }) {
         }
         return {
           ok: false,
-          error:
-            err instanceof Error
-              ? err.message
-              : TRANSLATIONS[locale].errors.unexpectedTitle,
+          error: getFriendlyErrorMessage(
+            err,
+            TRANSLATIONS[locale].errors.apiUnreachableTitle,
+            TRANSLATIONS[locale].errors.unexpectedTitle,
+          ),
         };
       }
     },
@@ -656,7 +675,11 @@ export function SpaceFarmProvider({ children }: { children: ReactNode }) {
         showToast(TRANSLATIONS[locale].profilePage.savedToast);
         return { ok: true };
       } catch (err) {
-        return extractMutationError(err, "Failed to save profile");
+        return extractMutationError(
+          err,
+          TRANSLATIONS[locale].errors.apiUnreachableTitle,
+          "Failed to save profile",
+        );
       }
     },
     [authToken, locale, persistSessionUser, showToast],
@@ -674,10 +697,14 @@ export function SpaceFarmProvider({ children }: { children: ReactNode }) {
         }
         return { ok: true };
       } catch (err) {
-        return extractMutationError(err, "Failed to add parcel");
+        return extractMutationError(
+          err,
+          TRANSLATIONS[locale].errors.apiUnreachableTitle,
+          "Failed to add parcel",
+        );
       }
     },
-    [authToken],
+    [authToken, locale],
   );
 
   const setActiveParcel = useCallback(
@@ -692,10 +719,14 @@ export function SpaceFarmProvider({ children }: { children: ReactNode }) {
         }
         return { ok: true };
       } catch (err) {
-        return extractMutationError(err, "Failed to activate parcel");
+        return extractMutationError(
+          err,
+          TRANSLATIONS[locale].errors.apiUnreachableTitle,
+          "Failed to activate parcel",
+        );
       }
     },
-    [authToken],
+    [authToken, locale],
   );
 
   const removeParcel = useCallback(
@@ -706,10 +737,14 @@ export function SpaceFarmProvider({ children }: { children: ReactNode }) {
         setParcels(res.parcels);
         return { ok: true };
       } catch (err) {
-        return extractMutationError(err, "Failed to delete parcel");
+        return extractMutationError(
+          err,
+          TRANSLATIONS[locale].errors.apiUnreachableTitle,
+          "Failed to delete parcel",
+        );
       }
     },
-    [authToken],
+    [authToken, locale],
   );
 
   const saveActiveParcelInputs = useCallback(
@@ -756,10 +791,14 @@ export function SpaceFarmProvider({ children }: { children: ReactNode }) {
         setParcels(res.parcels);
         return { ok: true };
       } catch (err) {
-        return extractMutationError(err, "Failed to save parcel lab inputs");
+        return extractMutationError(
+          err,
+          TRANSLATIONS[locale].errors.apiUnreachableTitle,
+          "Failed to save parcel lab inputs",
+        );
       }
     },
-    [authToken, draft, parcels],
+    [authToken, draft, locale, parcels],
   );
 
   // Load API health & crop catalog on boot without inventing synthetic fallback

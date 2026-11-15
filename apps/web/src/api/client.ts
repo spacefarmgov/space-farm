@@ -9,6 +9,8 @@ import type {
 
 const BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 
+const RETRY_DELAY_MS = 350;
+
 export class SpaceFarmApiError extends Error {
   readonly status: number;
   readonly envelope?: ErrorEnvelope;
@@ -21,8 +23,71 @@ export class SpaceFarmApiError extends Error {
   }
 }
 
+export function isNetworkFailure(err: unknown): boolean {
+  if (err instanceof SpaceFarmApiError && err.status === 0) {
+    return true;
+  }
+  if (err instanceof TypeError) {
+    return true;
+  }
+  if (err instanceof Error) {
+    const msg = err.message.toLowerCase();
+    return (
+      msg === "failed to fetch" ||
+      msg === "network_unreachable" ||
+      msg.includes("load failed") ||
+      msg.includes("networkerror")
+    );
+  }
+  return false;
+}
+
+export function getFriendlyErrorMessage(
+  err: unknown,
+  networkErrorMessage: string,
+  fallback: string,
+): string {
+  if (isNetworkFailure(err)) {
+    return networkErrorMessage;
+  }
+  if (err instanceof Error && err.message.trim()) {
+    return err.message;
+  }
+  return fallback;
+}
+
+export async function resilientFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  const reqInit: RequestInit = {
+    credentials: init?.credentials ?? "same-origin",
+    ...init,
+  };
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      return await fetch(input, reqInit);
+    } catch (err) {
+      if (init?.signal?.aborted) {
+        throw err;
+      }
+      lastError = err;
+      if (attempt === 0 && isNetworkFailure(err)) {
+        await new Promise((resolve) => globalThis.setTimeout(resolve, RETRY_DELAY_MS));
+        continue;
+      }
+      break;
+    }
+  }
+  if (isNetworkFailure(lastError)) {
+    throw new SpaceFarmApiError("NETWORK_UNREACHABLE", 0);
+  }
+  throw lastError;
+}
+
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${BASE_URL}${path}`, {
+  const response = await resilientFetch(`${BASE_URL}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",

@@ -9,6 +9,7 @@ import json
 import os
 import secrets
 import sqlite3
+import threading
 import time
 import uuid
 from contextlib import contextmanager
@@ -17,6 +18,10 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from app.config import Settings, get_settings
+
+VAULT_COOKIE_NAME = "sf_account_vault"
+_SCHEMA_INIT_LOCK = threading.Lock()
+_INITIALIZED_DB_PATHS: set[str] = set()
 
 REGION_DEFAULTS: dict[str, tuple[str, str, float, float, float, str]] = {
     "ganja-dashkasan": ("ganja-dashkasan", "Ganja–Dashkasan Plot", 40.68, 46.36, 28.4, "wheat"),
@@ -118,7 +123,7 @@ def _default_lab_profile(region_id: str | None) -> dict[str, Any]:
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    return datetime.now(timezone.utc).isoformat(timespec="microseconds")
 
 
 def _resolve_region_seed(region_text: str | None) -> tuple[str, str, float, float, float, str]:
@@ -154,13 +159,18 @@ class SpaceFarmStore:
         self.db_path = self.data_root / "spacefarm.db"
         self.secret_path = self.data_root / ".auth_secret"
         os.makedirs(self.data_root, exist_ok=True)
-        self._init_schema()
+        resolved_key = str(self.db_path.resolve())
+        with _SCHEMA_INIT_LOCK:
+            if resolved_key not in _INITIALIZED_DB_PATHS or not self.db_path.exists():
+                self._init_schema()
+                _INITIALIZED_DB_PATHS.add(resolved_key)
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
-        conn = sqlite3.connect(self.db_path, timeout=10.0)
+        conn = sqlite3.connect(self.db_path, timeout=15.0)
         conn.row_factory = sqlite3.Row
         try:
+            conn.execute("PRAGMA busy_timeout = 10000;")
             conn.execute("PRAGMA foreign_keys = ON;")
             yield conn
             conn.commit()
@@ -172,6 +182,10 @@ class SpaceFarmStore:
 
     def _init_schema(self) -> None:
         with self._connect() as conn:
+            try:
+                conn.execute("PRAGMA journal_mode = WAL;")
+            except sqlite3.OperationalError:
+                pass
             conn.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS users (
@@ -454,6 +468,322 @@ class SpaceFarmStore:
         claims = self.verify_token_claims(token)
         return str(claims["sub"]) if claims else None
 
+    def _sign_compact_payload(self, prefix: str, payload: dict[str, Any]) -> str:
+        raw = json.dumps(payload, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+        encoded = base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+        signing_input = f"{prefix}.{encoded}".encode("ascii")
+        sig = hmac.new(self._signing_secret(), signing_input, hashlib.sha256).hexdigest()
+        return f"{prefix}.{encoded}.{sig}"
+
+    def _verify_compact_payload(self, token: str | None, expected_prefix: str) -> dict[str, Any] | None:
+        clean = (token or "").strip()
+        if not clean or not clean.startswith(f"{expected_prefix}."):
+            return None
+        try:
+            prefix, encoded, sig = clean.split(".", 2)
+            if prefix != expected_prefix:
+                return None
+            signing_input = f"{prefix}.{encoded}".encode("ascii")
+            expected = hmac.new(self._signing_secret(), signing_input, hashlib.sha256).hexdigest()
+            if not hmac.compare_digest(sig, expected):
+                return None
+            padded = encoded + ("=" * ((-len(encoded)) % 4))
+            decoded = base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8")
+            parsed = json.loads(decoded)
+            return parsed if isinstance(parsed, dict) else None
+        except (ValueError, TypeError, UnicodeDecodeError, json.JSONDecodeError):
+            return None
+
+    def export_vault_cookie(
+        self,
+        user_id: str,
+        existing_cookie: str | None = None,
+    ) -> str | None:
+        """Build a signed compact cookie holding up to 3 accounts (scrypt hashes only) for serverless persistence."""
+        with self._connect() as conn:
+            urow = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+            if not urow:
+                return None
+            prow = conn.execute(
+                "SELECT * FROM farm_parcels WHERE user_id = ? ORDER BY is_primary DESC, created_at ASC LIMIT 1",
+                (user_id,),
+            ).fetchone()
+
+        prior_records: list[dict[str, Any]] = []
+        parsed_prior = self._verify_compact_payload(existing_cookie, "sfv1")
+        if parsed_prior and isinstance(parsed_prior.get("a"), list):
+            for item in parsed_prior["a"]:
+                if isinstance(item, dict) and item.get("email") and item.get("id"):
+                    prior_records.append(item)
+
+        clean_email = str(urow["email"]).strip().lower()
+        matching_prior = next(
+            (r for r in prior_records if r.get("email") == clean_email or r.get("id") == urow["id"]),
+            None,
+        )
+        pw_hash = str(urow["password_hash"] or "")
+        if pw_hash.startswith("session-rehydrated$") and matching_prior:
+            prior_pw = str(matching_prior.get("pw_hash") or "")
+            if prior_pw.startswith("scrypt$"):
+                pw_hash = prior_pw
+
+        avatar_val = urow["avatar_data_url"]
+        clean_avatar = (
+            avatar_val
+            if isinstance(avatar_val, str) and avatar_val.startswith("https://") and len(avatar_val) <= 250
+            else None
+        )
+        entry: dict[str, Any] = {
+            "id": str(urow["id"]),
+            "name": str(urow["name"])[:120],
+            "email": clean_email,
+            "pw_hash": pw_hash,
+            "region": str(urow["region"] or "Ganja-Dashkasan")[:120],
+            "username": str(urow["username"] or "")[:60],
+            "phone_code": str(urow["phone_code"] or "AZ +994")[:20],
+            "phone": str(urow["phone"] or "")[:40],
+            "active_since": str(urow["active_since"] or "")[:30],
+            "role_type": str(urow["role_type"] or "farmer")[:30],
+            "irrigation_pref": str(urow["irrigation_pref"] or "irrigated")[:30],
+            "bio": str(urow["bio"] or "")[:180],
+            "avatar_url": clean_avatar,
+            "google_sub": str(urow["google_sub"]) if urow["google_sub"] else None,
+            "created_at": str(urow["created_at"] or _now_iso()),
+            "updated_at": str(urow["updated_at"] or _now_iso()),
+        }
+        if prow is not None:
+            try:
+                lab_dict = json.loads(prow["lab_metrics_json"] or "{}")
+                if not isinstance(lab_dict, dict):
+                    lab_dict = {}
+            except json.JSONDecodeError:
+                lab_dict = {}
+            entry["p"] = {
+                "id": str(prow["id"]),
+                "label": str(prow["label"])[:120],
+                "region_id": str(prow["region_id"])[:80],
+                "lat": float(prow["latitude"]),
+                "lon": float(prow["longitude"]),
+                "area_ha": float(prow["area_ha"]),
+                "irrig": str(prow["irrigation_type"]),
+                "budget": prow["irrigation_budget_mm"],
+                "ph": prow["soil_ph"],
+                "tex": str(prow["soil_texture"]),
+                "crop": str(prow["prior_crop_id"]),
+                "lab": lab_dict,
+            }
+
+        records = [entry] + [
+            r
+            for r in prior_records
+            if str(r.get("email") or "").lower() != clean_email and r.get("id") != entry["id"]
+        ][:2]
+
+        token = self._sign_compact_payload("sfv1", {"v": 1, "a": records})
+        while len(token) > 3600 and len(records) > 1:
+            records.pop()
+            token = self._sign_compact_payload("sfv1", {"v": 1, "a": records})
+        if len(token) > 3600 and "p" in records[0] and isinstance(records[0]["p"], dict):
+            records[0]["p"].pop("lab", None)
+            token = self._sign_compact_payload("sfv1", {"v": 1, "a": records})
+        return token
+
+    def restore_from_vault_cookie(
+        self,
+        cookie_value: str | None,
+        *,
+        target_email: str | None = None,
+    ) -> bool:
+        """Restore signed vault accounts into local SQLite when hitting a cold serverless container."""
+        parsed = self._verify_compact_payload(cookie_value, "sfv1")
+        if not parsed or not isinstance(parsed.get("a"), list):
+            return False
+
+        clean_target = target_email.strip().lower() if target_email else None
+        candidates = [
+            r
+            for r in parsed["a"]
+            if isinstance(r, dict)
+            and isinstance(r.get("id"), str)
+            and isinstance(r.get("email"), str)
+            and isinstance(r.get("pw_hash"), str)
+        ]
+        if clean_target:
+            candidates = [r for r in candidates if r["email"].strip().lower() == clean_target]
+        if not candidates:
+            return False
+
+        restored_any = False
+        with self._connect() as conn:
+            for entry in candidates:
+                uid = entry["id"].strip()
+                email = entry["email"].strip().lower()
+                pw_hash = entry["pw_hash"].strip()
+                if not uid or not email or not pw_hash:
+                    continue
+                vault_updated = str(entry.get("updated_at") or _now_iso())
+                existing = conn.execute(
+                    "SELECT id, password_hash, updated_at FROM users WHERE id = ? OR email = ? LIMIT 1",
+                    (uid, email),
+                ).fetchone()
+                if existing is None:
+                    try:
+                        conn.execute(
+                            """
+                            INSERT INTO users (
+                                id, name, email, password_hash, region, username, phone_code,
+                                phone, active_since, role_type, irrigation_pref, bio,
+                                avatar_data_url, google_sub, created_at, updated_at
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            (
+                                uid,
+                                str(entry.get("name") or email.split("@")[0])[:120],
+                                email,
+                                pw_hash,
+                                str(entry.get("region") or "Ganja-Dashkasan")[:120],
+                                str(entry.get("username") or "")[:60],
+                                str(entry.get("phone_code") or "AZ +994")[:20],
+                                str(entry.get("phone") or "")[:40],
+                                str(entry.get("active_since") or vault_updated[:10])[:30],
+                                str(entry.get("role_type") or "farmer")[:30],
+                                str(entry.get("irrigation_pref") or "irrigated")[:30],
+                                str(entry.get("bio") or "")[:1200],
+                                entry.get("avatar_url"),
+                                entry.get("google_sub"),
+                                str(entry.get("created_at") or vault_updated),
+                                vault_updated,
+                            ),
+                        )
+                    except sqlite3.IntegrityError:
+                        continue
+                    self._upsert_parcel_from_vault(conn, uid, entry, vault_updated)
+                    restored_any = True
+                else:
+                    existing_pw = str(existing["password_hash"] or "")
+                    existing_updated = str(existing["updated_at"] or "")
+                    needs_pw_upgrade = existing_pw.startswith("session-rehydrated$") and pw_hash.startswith("scrypt$")
+                    is_newer_vault = vault_updated > existing_updated
+                    if needs_pw_upgrade or is_newer_vault:
+                        next_pw = pw_hash if pw_hash.startswith("scrypt$") else existing_pw
+                        conn.execute(
+                            """
+                            UPDATE users
+                            SET name = ?, region = ?, username = ?, phone_code = ?, phone = ?,
+                                role_type = ?, irrigation_pref = ?, bio = ?, google_sub = ?,
+                                password_hash = ?, updated_at = ?
+                            WHERE id = ?
+                            """,
+                            (
+                                str(entry.get("name") or email.split("@")[0])[:120],
+                                str(entry.get("region") or "Ganja-Dashkasan")[:120],
+                                str(entry.get("username") or "")[:60],
+                                str(entry.get("phone_code") or "AZ +994")[:20],
+                                str(entry.get("phone") or "")[:40],
+                                str(entry.get("role_type") or "farmer")[:30],
+                                str(entry.get("irrigation_pref") or "irrigated")[:30],
+                                str(entry.get("bio") or "")[:1200],
+                                entry.get("google_sub"),
+                                next_pw,
+                                vault_updated,
+                                str(existing["id"]),
+                            ),
+                        )
+                        self._upsert_parcel_from_vault(conn, str(existing["id"]), entry, vault_updated)
+                        restored_any = True
+        return restored_any
+
+    def _upsert_parcel_from_vault(
+        self,
+        conn: sqlite3.Connection,
+        user_id: str,
+        entry: dict[str, Any],
+        now_iso: str,
+    ) -> None:
+        p = entry.get("p")
+        if not isinstance(p, dict) or not p.get("id"):
+            existing_count = conn.execute(
+                "SELECT COUNT(*) AS cnt FROM farm_parcels WHERE user_id = ?", (user_id,)
+            ).fetchone()["cnt"]
+            if existing_count > 0:
+                return
+            reg_id, parcel_label, lat, lon, area_ha, crop_id = _resolve_region_seed(
+                str(entry.get("region") or "Ganja-Dashkasan")
+            )
+            lab_seed = _default_lab_profile(reg_id)
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO farm_parcels (
+                    id, user_id, label, region_id, latitude, longitude, area_ha,
+                    irrigation_type, irrigation_budget_mm, soil_ph, soil_texture,
+                    prior_crop_id, lab_metrics_json, is_primary, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+                """,
+                (
+                    f"pcl-{uuid.uuid4().hex[:10]}",
+                    user_id,
+                    parcel_label,
+                    reg_id,
+                    lat,
+                    lon,
+                    area_ha,
+                    lab_seed["irrigation_type"],
+                    lab_seed["irrigation_budget_mm"],
+                    lab_seed["soil_ph"],
+                    lab_seed["soil_texture"],
+                    crop_id,
+                    json.dumps(lab_seed["lab_metrics"]),
+                    now_iso,
+                ),
+            )
+            return
+
+        reg_id = str(p.get("region_id") or "custom")[:80]
+        lab_seed = _default_lab_profile(reg_id)
+        lab_dict = p.get("lab") if isinstance(p.get("lab"), dict) else lab_seed["lab_metrics"]
+        conn.execute(
+            """
+            INSERT INTO farm_parcels (
+                id, user_id, label, region_id, latitude, longitude, area_ha,
+                irrigation_type, irrigation_budget_mm, soil_ph, soil_texture,
+                prior_crop_id, lab_metrics_json, is_primary, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                label = excluded.label,
+                region_id = excluded.region_id,
+                latitude = excluded.latitude,
+                longitude = excluded.longitude,
+                area_ha = excluded.area_ha,
+                irrigation_type = excluded.irrigation_type,
+                irrigation_budget_mm = excluded.irrigation_budget_mm,
+                soil_ph = excluded.soil_ph,
+                soil_texture = excluded.soil_texture,
+                prior_crop_id = excluded.prior_crop_id,
+                lab_metrics_json = excluded.lab_metrics_json,
+                is_primary = 1
+            """,
+            (
+                str(p["id"]),
+                user_id,
+                str(p.get("label") or "Primary Plot")[:160],
+                reg_id,
+                float(p.get("lat", 40.68)),
+                float(p.get("lon", 46.36)),
+                float(p.get("area_ha", 25.0)),
+                str(p.get("irrig") or lab_seed["irrigation_type"]),
+                p.get("budget", lab_seed["irrigation_budget_mm"]),
+                p.get("ph", lab_seed["soil_ph"]),
+                str(p.get("tex") or lab_seed["soil_texture"]),
+                str(p.get("crop") or "wheat"),
+                json.dumps(lab_dict),
+                now_iso,
+            ),
+        )
+        conn.execute(
+            "UPDATE farm_parcels SET is_primary = CASE WHEN id = ? THEN 1 ELSE 0 END WHERE user_id = ?",
+            (str(p["id"]), user_id),
+        )
+
     def ensure_session_user(self, claims: dict[str, Any]) -> str | None:
         """Verify user row exists in local SQLite, rehydrating signed v2 claims across cold serverless containers."""
         user_id = str(claims.get("sub") or "").strip()
@@ -643,7 +973,7 @@ class SpaceFarmStore:
     def _hash_otp_code(email: str, code: str) -> str:
         return hashlib.sha256(f"{email.strip().lower()}:{code.strip()}".encode("utf-8")).hexdigest()
 
-    def create_registration_otp(
+    def create_registration_otp_bundle(
         self,
         *,
         name: str,
@@ -651,7 +981,7 @@ class SpaceFarmStore:
         password: str,
         region: str = "Ganja-Dashkasan",
         ttl_seconds: int = 600,
-    ) -> str:
+    ) -> tuple[str, str]:
         clean_email = email.strip().lower()
         clean_name = name.strip()
         clean_region = region.strip() or "Ganja-Dashkasan"
@@ -677,6 +1007,35 @@ class SpaceFarmStore:
                 """,
                 (clean_email, clean_name, pw_hash, clean_region, otp_hash, expires_at, now),
             )
+        otp_token = self._sign_compact_payload(
+            "sfotp1",
+            {
+                "e": clean_email,
+                "n": clean_name,
+                "p": pw_hash,
+                "r": clean_region,
+                "h": otp_hash,
+                "exp": expires_at,
+            },
+        )
+        return otp_code, otp_token
+
+    def create_registration_otp(
+        self,
+        *,
+        name: str,
+        email: str,
+        password: str,
+        region: str = "Ganja-Dashkasan",
+        ttl_seconds: int = 600,
+    ) -> str:
+        otp_code, _ = self.create_registration_otp_bundle(
+            name=name,
+            email=email,
+            password=password,
+            region=region,
+            ttl_seconds=ttl_seconds,
+        )
         return otp_code
 
     def verify_registration_otp(
@@ -684,10 +1043,12 @@ class SpaceFarmStore:
         *,
         email: str,
         code: str,
+        otp_token: str | None = None,
     ) -> tuple[str, str | None, dict[str, Any] | None, list[dict[str, Any]]]:
         clean_email = email.strip().lower()
         clean_code = code.strip()
         now_ts = int(time.time())
+        expected_hash = self._hash_otp_code(clean_email, clean_code)
         with self._connect() as conn:
             if conn.execute("SELECT 1 FROM users WHERE email = ?", (clean_email,)).fetchone():
                 return "email_exists", None, None, []
@@ -695,33 +1056,63 @@ class SpaceFarmStore:
                 "SELECT * FROM registration_otp_codes WHERE email = ?",
                 (clean_email,),
             ).fetchone()
-            if row is None:
-                return "not_found", None, None, []
-            if int(row["expires_at"]) < now_ts:
-                conn.execute("DELETE FROM registration_otp_codes WHERE email = ?", (clean_email,))
-                return "expired", None, None, []
-            if int(row["attempts"]) >= 5:
-                return "too_many_attempts", None, None, []
-            expected_hash = self._hash_otp_code(clean_email, clean_code)
-            if not hmac.compare_digest(row["otp_hash"], expected_hash):
-                conn.execute(
-                    "UPDATE registration_otp_codes SET attempts = attempts + 1 WHERE email = ?",
-                    (clean_email,),
+            if row is not None:
+                if int(row["expires_at"]) < now_ts:
+                    conn.execute("DELETE FROM registration_otp_codes WHERE email = ?", (clean_email,))
+                    return "expired", None, None, []
+                if int(row["attempts"]) >= 5:
+                    return "too_many_attempts", None, None, []
+                if not hmac.compare_digest(row["otp_hash"], expected_hash):
+                    conn.execute(
+                        "UPDATE registration_otp_codes SET attempts = attempts + 1 WHERE email = ?",
+                        (clean_email,),
+                    )
+                    return "invalid_code", None, None, []
+                user_id = self._insert_user_with_parcel(
+                    conn,
+                    name=row["name"],
+                    email=clean_email,
+                    pw_hash=row["password_hash"],
+                    region=row["region"],
                 )
-                return "invalid_code", None, None, []
-            user_id = self._insert_user_with_parcel(
-                conn,
-                name=row["name"],
-                email=clean_email,
-                pw_hash=row["password_hash"],
-                region=row["region"],
-            )
-            conn.execute("DELETE FROM registration_otp_codes WHERE email = ?", (clean_email,))
+                conn.execute("DELETE FROM registration_otp_codes WHERE email = ?", (clean_email,))
+            else:
+                claims = self._verify_compact_payload(otp_token, "sfotp1")
+                if not claims or str(claims.get("e") or "").strip().lower() != clean_email:
+                    return "not_found", None, None, []
+                if int(claims.get("exp") or 0) < now_ts:
+                    return "expired", None, None, []
+                if not hmac.compare_digest(str(claims.get("h") or ""), expected_hash):
+                    conn.execute(
+                        """
+                        INSERT INTO registration_otp_codes (
+                            email, name, password_hash, region, otp_hash, attempts, expires_at, created_at
+                        ) VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+                        ON CONFLICT(email) DO UPDATE SET attempts = attempts + 1
+                        """,
+                        (
+                            clean_email,
+                            str(claims.get("n") or clean_email.split("@")[0]),
+                            str(claims.get("p") or ""),
+                            str(claims.get("r") or "Ganja-Dashkasan"),
+                            str(claims.get("h") or ""),
+                            int(claims.get("exp") or now_ts),
+                            _now_iso(),
+                        ),
+                    )
+                    return "invalid_code", None, None, []
+                user_id = self._insert_user_with_parcel(
+                    conn,
+                    name=str(claims.get("n") or clean_email.split("@")[0]),
+                    email=clean_email,
+                    pw_hash=str(claims.get("p") or ""),
+                    region=str(claims.get("r") or "Ganja-Dashkasan"),
+                )
 
         profile, parcels = self.get_user_bundle(user_id)
         if profile is None:
             raise RuntimeError("Failed to read verified user")
-        return "ok", self.create_token(user_id), profile, parcels
+        return "ok", self.create_token(user_id, profile=profile, parcels=parcels), profile, parcels
 
     def authenticate_or_register_google(
         self,
@@ -763,6 +1154,12 @@ class SpaceFarmStore:
         if profile is None:
             raise RuntimeError("Failed to read Google-authenticated user")
         return self.create_token(user_id), profile, parcels
+
+    def get_user_id_by_email(self, email: str) -> str | None:
+        clean_email = email.strip().lower()
+        with self._connect() as conn:
+            row = conn.execute("SELECT id FROM users WHERE email = ?", (clean_email,)).fetchone()
+            return str(row["id"]) if row is not None else None
 
     def email_exists(self, email: str) -> bool:
         clean_email = email.strip().lower()
@@ -876,6 +1273,7 @@ class SpaceFarmStore:
                     now,
                 ),
             )
+            conn.execute("UPDATE users SET updated_at = ? WHERE id = ?", (now, user_id))
         _, parcels = self.get_user_bundle(user_id)
         return parcels
 
@@ -932,6 +1330,7 @@ class SpaceFarmStore:
                     f"UPDATE farm_parcels SET {', '.join(updates)} WHERE user_id = ? AND id = ?",
                     values,
                 )
+                conn.execute("UPDATE users SET updated_at = ? WHERE id = ?", (_now_iso(), user_id))
         _, parcels = self.get_user_bundle(user_id)
         return parcels
 
@@ -942,6 +1341,7 @@ class SpaceFarmStore:
                 "UPDATE farm_parcels SET is_primary = 1 WHERE user_id = ? AND id = ?",
                 (user_id, parcel_id),
             )
+            conn.execute("UPDATE users SET updated_at = ? WHERE id = ?", (_now_iso(), user_id))
         _, parcels = self.get_user_bundle(user_id)
         return parcels
 
@@ -951,6 +1351,7 @@ class SpaceFarmStore:
                 "DELETE FROM farm_parcels WHERE user_id = ? AND id = ?",
                 (user_id, parcel_id),
             )
+            conn.execute("UPDATE users SET updated_at = ? WHERE id = ?", (_now_iso(), user_id))
         _, parcels = self.get_user_bundle(user_id)
         return parcels
 
@@ -1539,44 +1940,89 @@ class SpaceFarmStore:
                 """,
                 (clean_email, row["id"], code_hash, expires_at, now),
             )
+        reset_token = self._sign_compact_payload(
+            "sfrst1",
+            {
+                "u": row["id"],
+                "e": row["email"],
+                "h": code_hash,
+                "exp": expires_at,
+            },
+        )
         return {
             "user_id": row["id"],
             "name": row["name"],
             "email": row["email"],
             "code": code,
+            "reset_token": reset_token,
             "expires_at": expires_at,
             "created_at": now,
         }
 
     def verify_and_reset_password(
-        self, *, email: str, code: str, new_password: str
+        self, *, email: str, code: str, new_password: str, reset_token: str | None = None
     ) -> str:
         clean_email = email.strip().lower()
         clean_code = code.strip()
         now_ts = int(time.time())
+        expected_hash = self._hash_otp_code(clean_email, clean_code)
         with self._connect() as conn:
             row = conn.execute(
                 "SELECT * FROM password_reset_codes WHERE email = ?",
                 (clean_email,),
             ).fetchone()
-            if row is None:
-                return "not_found"
-            if int(row["expires_at"]) < now_ts:
-                conn.execute("DELETE FROM password_reset_codes WHERE email = ?", (clean_email,))
-                return "expired"
-            if int(row["attempts"]) >= 5:
-                return "too_many_attempts"
-            expected_hash = self._hash_otp_code(clean_email, clean_code)
-            if not hmac.compare_digest(row["code_hash"], expected_hash):
+            if row is not None:
+                if int(row["expires_at"]) < now_ts:
+                    conn.execute("DELETE FROM password_reset_codes WHERE email = ?", (clean_email,))
+                    return "expired"
+                if int(row["attempts"]) >= 5:
+                    return "too_many_attempts"
+                if not hmac.compare_digest(row["code_hash"], expected_hash):
+                    conn.execute(
+                        "UPDATE password_reset_codes SET attempts = attempts + 1 WHERE email = ?",
+                        (clean_email,),
+                    )
+                    return "invalid_code"
+                pw_hash = self.hash_password(new_password)
                 conn.execute(
-                    "UPDATE password_reset_codes SET attempts = attempts + 1 WHERE email = ?",
-                    (clean_email,),
+                    "UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?",
+                    (pw_hash, _now_iso(), row["user_id"]),
+                )
+                conn.execute("DELETE FROM password_reset_codes WHERE email = ?", (clean_email,))
+                return "ok"
+
+            claims = self._verify_compact_payload(reset_token, "sfrst1")
+            if not claims or str(claims.get("e") or "").strip().lower() != clean_email:
+                return "not_found"
+            if int(claims.get("exp") or 0) < now_ts:
+                return "expired"
+            user_row = conn.execute(
+                "SELECT id FROM users WHERE email = ? OR id = ? LIMIT 1",
+                (clean_email, str(claims.get("u") or "")),
+            ).fetchone()
+            if user_row is None:
+                return "not_found"
+            user_id = str(user_row["id"])
+            if not hmac.compare_digest(str(claims.get("h") or ""), expected_hash):
+                conn.execute(
+                    """
+                    INSERT INTO password_reset_codes (
+                        email, user_id, code_hash, attempts, expires_at, created_at
+                    ) VALUES (?, ?, ?, 1, ?, ?)
+                    ON CONFLICT(email) DO UPDATE SET attempts = attempts + 1
+                    """,
+                    (
+                        clean_email,
+                        user_id,
+                        str(claims.get("h") or ""),
+                        int(claims.get("exp") or now_ts),
+                        _now_iso(),
+                    ),
                 )
                 return "invalid_code"
             pw_hash = self.hash_password(new_password)
             conn.execute(
                 "UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?",
-                (pw_hash, _now_iso(), row["user_id"]),
+                (pw_hash, _now_iso(), user_id),
             )
-            conn.execute("DELETE FROM password_reset_codes WHERE email = ?", (clean_email,))
-        return "ok"
+            return "ok"

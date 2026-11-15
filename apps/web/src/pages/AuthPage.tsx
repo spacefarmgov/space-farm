@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { AlertTriangle, ArrowLeft, Eye, EyeOff, Globe, KeyRound, MailCheck, X } from "lucide-react";
 import {
   fetchAuthProviders,
+  getFriendlyErrorMessage,
   loginWithGoogleToken,
   requestPasswordReset,
   requestRegistrationOtp,
@@ -78,9 +79,11 @@ export function AuthPage({ initialMode }: { initialMode: AuthRouteMode }) {
   // Multi-step Email OTP (Register) & 6-digit Recovery Code (Forgot Password) states
   const [registerStep, setRegisterStep] = useState<"form" | "otp">("form");
   const [otpCode, setOtpCode] = useState("");
+  const [otpToken, setOtpToken] = useState("");
   const [otpCooldown, setOtpCooldown] = useState(0);
   const [resetStep, setResetStep] = useState<"request" | "verify">("request");
   const [resetCode, setResetCode] = useState("");
+  const [resetToken, setResetToken] = useState("");
   const [newPassword, setNewPassword] = useState("");
 
   const envGoogleId = String(import.meta.env.VITE_GOOGLE_CLIENT_ID || "").trim();
@@ -169,7 +172,11 @@ export function AuthPage({ initialMode }: { initialMode: AuthRouteMode }) {
             navigate(redirectTarget, { replace: true });
           } catch (err) {
             setStatusNotice({
-              message: err instanceof Error ? err.message : t.auth.invalidCredentials,
+              message: getFriendlyErrorMessage(
+                err,
+                t.errors.apiUnreachableTitle,
+                t.auth.invalidCredentials,
+              ),
               tone: "error",
             });
           } finally {
@@ -216,7 +223,7 @@ export function AuthPage({ initialMode }: { initialMode: AuthRouteMode }) {
       script.removeEventListener("load", renderGoogleBtn);
       script.removeEventListener("error", handleScriptError);
     };
-  }, [authProviders.google_client_id, establishAuthSession, locale, mode, navigate, redirectTarget, region, registerStep, t.auth.invalidCredentials, t.auth.welcomeBack]);
+  }, [authProviders.google_client_id, establishAuthSession, locale, mode, navigate, redirectTarget, region, registerStep, t.auth.invalidCredentials, t.auth.welcomeBack, t.errors.apiUnreachableTitle]);
 
   // Already logged in -> jump straight to Dashboard
   useEffect(() => {
@@ -239,7 +246,9 @@ export function AuthPage({ initialMode }: { initialMode: AuthRouteMode }) {
       setPassword("");
       setShowPassword(false);
       setRegisterStep("form");
+      setOtpToken("");
       setResetStep("request");
+      setResetToken("");
       setFieldErrors({});
       setStatusNotice(null);
     }
@@ -263,8 +272,10 @@ export function AuthPage({ initialMode }: { initialMode: AuthRouteMode }) {
     setShowPassword(false);
     setRegisterStep("form");
     setOtpCode("");
+    setOtpToken("");
     setResetStep("request");
     setResetCode("");
+    setResetToken("");
     setNewPassword("");
     setFieldErrors({});
     setStatusNotice(preservedNotice ?? null);
@@ -285,12 +296,13 @@ export function AuthPage({ initialMode }: { initialMode: AuthRouteMode }) {
     setIsSubmitting(true);
     setStatusNotice(null);
     try {
-      await requestRegistrationOtp({
+      const res = await requestRegistrationOtp({
         name: fullName.trim(),
         email: email.trim().toLowerCase(),
         password,
         region,
       });
+      setOtpToken(res.otp_token ?? "");
       setOtpCooldown(45);
       setStatusNotice({
         message: `${t.authPage.otpSentNotice} ${email.trim().toLowerCase()}`,
@@ -298,7 +310,11 @@ export function AuthPage({ initialMode }: { initialMode: AuthRouteMode }) {
       });
     } catch (err) {
       setStatusNotice({
-        message: err instanceof Error ? err.message : t.authPage.smtpRequiredNotice,
+        message: getFriendlyErrorMessage(
+          err,
+          t.errors.apiUnreachableTitle,
+          t.authPage.smtpRequiredNotice,
+        ),
         tone: "error",
       });
     } finally {
@@ -326,12 +342,13 @@ export function AuthPage({ initialMode }: { initialMode: AuthRouteMode }) {
         const session = await verifyRegistrationOtp({
           email: trimmedEmail,
           code: cleanOtp,
+          otp_token: otpToken || undefined,
         });
         establishAuthSession(session, t.auth.accountCreated);
         navigate(redirectTarget, { replace: true });
       } catch (err) {
         setStatusNotice({
-          message: err instanceof Error ? err.message : ap.otpInvalid,
+          message: getFriendlyErrorMessage(err, t.errors.apiUnreachableTitle, ap.otpInvalid),
           tone: "error",
         });
       } finally {
@@ -361,6 +378,7 @@ export function AuthPage({ initialMode }: { initialMode: AuthRouteMode }) {
       try {
         if (resetStep === "request") {
           const res = await requestPasswordReset(trimmedEmail);
+          setResetToken(res.reset_token ?? "");
           if (res.smtp_configured && res.code_dispatched) {
             setResetStep("verify");
             setStatusNotice({ message: ap.resetSent, tone: "success" });
@@ -375,12 +393,13 @@ export function AuthPage({ initialMode }: { initialMode: AuthRouteMode }) {
             email: trimmedEmail,
             code: resetCode.replace(/\D/g, ""),
             new_password: newPassword,
+            reset_token: resetToken || undefined,
           });
           switchMode("login", { message: ap.resetSuccess, tone: "success" });
         }
       } catch (err) {
         setStatusNotice({
-          message: err instanceof Error ? err.message : t.auth.invalidEmail,
+          message: getFriendlyErrorMessage(err, t.errors.apiUnreachableTitle, t.auth.invalidEmail),
           tone: "error",
         });
       } finally {
@@ -411,12 +430,13 @@ export function AuthPage({ initialMode }: { initialMode: AuthRouteMode }) {
       setIsSubmitting(true);
       if (authProviders.smtp_configured) {
         try {
-          await requestRegistrationOtp({
+          const otpRes = await requestRegistrationOtp({
             name: trimmedName,
             email: trimmedEmail,
             password,
             region,
           });
+          setOtpToken(otpRes.otp_token ?? "");
           setRegisterStep("otp");
           setOtpCode("");
           setOtpCooldown(45);
@@ -426,7 +446,11 @@ export function AuthPage({ initialMode }: { initialMode: AuthRouteMode }) {
           });
         } catch (err) {
           setStatusNotice({
-            message: err instanceof Error ? err.message : ap.smtpRequiredNotice,
+            message: getFriendlyErrorMessage(
+              err,
+              t.errors.apiUnreachableTitle,
+              ap.smtpRequiredNotice,
+            ),
             tone: "error",
           });
         } finally {

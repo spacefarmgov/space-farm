@@ -1,4 +1,13 @@
-import { SpaceFarmApiError, getClimateFeatures, getCrops, getHealth, runSimulation } from "./client";
+import {
+  SpaceFarmApiError,
+  getClimateFeatures,
+  getCrops,
+  getFriendlyErrorMessage,
+  getHealth,
+  isNetworkFailure,
+  resilientFetch,
+  runSimulation,
+} from "./client";
 import type {
   ClimateBundle,
   ClimateTimeseriesBundle,
@@ -16,7 +25,7 @@ async function requestJsonWithMode<T>(
   path: string,
   init?: RequestInit,
 ): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
+  const response = await resilientFetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
@@ -52,7 +61,7 @@ async function requestJsonWithMode<T>(
   return parsed as T;
 }
 
-export { SpaceFarmApiError, getHealth };
+export { SpaceFarmApiError, getFriendlyErrorMessage, getHealth, isNetworkFailure };
 
 function buildClimateQueryString(
   params: {
@@ -263,7 +272,7 @@ async function requestWorkspaceJson<T>(
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
-  const resp = await fetch(`${API_BASE.replace(/\/$/, "")}${path}`, {
+  const resp = await resilientFetch(`${API_BASE.replace(/\/$/, "")}${path}`, {
     ...options,
     headers,
   });
@@ -624,6 +633,7 @@ export interface ForgotPasswordResponse {
   delivery_status: string;
   smtp_configured: boolean;
   code_dispatched?: boolean;
+  reset_token?: string;
   message?: string;
 }
 
@@ -638,6 +648,7 @@ export interface RequestRegisterOtpResponse {
   email: string;
   expires_in_seconds: number;
   delivery_status: string;
+  otp_token?: string;
 }
 
 export function fetchAuthProviders(signal?: AbortSignal): Promise<AuthProvidersResponse> {
@@ -662,6 +673,7 @@ export function requestRegistrationOtp(payload: {
 export function verifyRegistrationOtp(payload: {
   email: string;
   code: string;
+  otp_token?: string;
 }): Promise<AuthSessionResponse> {
   return requestWorkspaceJson<AuthSessionResponse>("/api/v1/auth/register/verify-otp", {
     method: "POST",
@@ -691,6 +703,7 @@ export function resetPasswordWithCode(payload: {
   email: string;
   code: string;
   new_password: string;
+  reset_token?: string;
 }): Promise<{ ok: boolean }> {
   return requestWorkspaceJson<{ ok: boolean }>("/api/v1/auth/reset-password", {
     method: "POST",

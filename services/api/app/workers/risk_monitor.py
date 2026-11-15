@@ -22,9 +22,10 @@ class RiskMonitorWorker:
     """Periodic background scheduler analyzing field coordinates & dispatching critical alerts."""
 
     def __init__(self, settings: Settings | None = None) -> None:
+        self._custom_settings = settings is not None
         self.settings = settings or get_settings()
         self._task: asyncio.Task[None] | None = None
-        self._stop_event = asyncio.Event()
+        self._stop_event: asyncio.Event | None = None
         self.running = False
         self.last_run_at: str | None = None
         self.last_error: str | None = None
@@ -33,11 +34,12 @@ class RiskMonitorWorker:
         self.total_dispatches_created = 0
 
     def status_dict(self) -> dict[str, Any]:
+        active = self.settings if self._custom_settings else get_settings()
         return {
-            "enabled": bool(self.settings.risk_worker_enabled and not self.settings.app_env == "test"),
+            "enabled": bool(active.risk_worker_enabled and active.app_env != "test" and not active.is_vercel),
             "running": self.running,
-            "interval_seconds": self.settings.risk_scan_interval_seconds,
-            "cooldown_hours": self.settings.risk_alert_cooldown_hours,
+            "interval_seconds": active.risk_scan_interval_seconds,
+            "cooldown_hours": active.risk_alert_cooldown_hours,
             "last_run_at": self.last_run_at,
             "last_error": self.last_error,
             "runs_completed": self.runs_completed,
@@ -82,14 +84,15 @@ class RiskMonitorWorker:
         }
 
     async def _loop(self) -> None:
+        stop_event = self._stop_event or asyncio.Event()
         # Short initial delay so uvicorn startup settles before scanning coordinates
         try:
-            await asyncio.wait_for(self._stop_event.wait(), timeout=4.0)
+            await asyncio.wait_for(stop_event.wait(), timeout=4.0)
             return
         except asyncio.TimeoutError:
             pass
 
-        while not self._stop_event.is_set():
+        while not stop_event.is_set():
             try:
                 summary = await self.run_single_pass()
                 logger.info(
@@ -107,33 +110,46 @@ class RiskMonitorWorker:
 
             interval = max(30, int(self.settings.risk_scan_interval_seconds))
             try:
-                await asyncio.wait_for(self._stop_event.wait(), timeout=interval)
+                await asyncio.wait_for(stop_event.wait(), timeout=interval)
             except asyncio.TimeoutError:
                 continue
 
     def start(self) -> None:
+        active = self.settings if self._custom_settings else get_settings()
         if (
-            not self.settings.risk_worker_enabled
-            or self.settings.app_env == "test"
-            or self.settings.is_vercel
+            not active.risk_worker_enabled
+            or active.app_env == "test"
+            or active.is_vercel
         ):
             return
+        self.settings = active
         if self._task and not self._task.done():
             return
-        self._stop_event.clear()
+        self._stop_event = asyncio.Event()
         self.running = True
         self._task = asyncio.create_task(self._loop(), name="spacefarm-risk-monitor")
 
     async def stop(self) -> None:
         self.running = False
-        self._stop_event.set()
-        if self._task:
-            self._task.cancel()
-            try:
-                await self._task
-            except asyncio.CancelledError:
-                pass
-            self._task = None
+        task = self._task
+        stop_event = self._stop_event
+        self._task = None
+        self._stop_event = None
+        if task is None:
+            return
+        try:
+            running_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            running_loop = None
+        if task.get_loop() is not running_loop:
+            return
+        if stop_event is not None:
+            stop_event.set()
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
 
 risk_worker = RiskMonitorWorker()
